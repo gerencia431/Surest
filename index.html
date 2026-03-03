@@ -967,6 +967,13 @@ table.data-table { width: 100%; border-collapse: collapse; }
               style="font-family:monospace;font-size:11px">
             <div style="font-size:11px;color:var(--stone);margin-top:3px">Pega aquí la URL que obtienes al publicar el script como Web App</div>
           </div>
+          <div class="field" style="margin-bottom:12px">
+            <label>URL base de la app (GitHub Pages)</label>
+            <input type="url" id="cfg-app-base-url"
+              placeholder="https://gerencia431.github.io/Surest/"
+              style="font-family:monospace;font-size:11px">
+            <div style="font-size:11px;color:var(--stone);margin-top:3px">Necesaria para generar los links de registro de viajeros correctamente</div>
+          </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
             <button class="btn btn-primary btn-sm" onclick="saveConfig();testSheets()">Guardar y probar</button>
             <button class="btn btn-outline btn-sm" onclick="syncToSheets()">⬆ Subir datos</button>
@@ -1086,6 +1093,7 @@ table.data-table { width: 100%; border-collapse: collapse; }
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModalReservaForce()">Cancelar</button>
       <button class="btn btn-outline" onclick="openEmailModal()" id="btn-email-reserva" style="display:none">✉ Enviar Email</button>
+      <button class="btn btn-outline" id="btn-checkin-form" onclick="abrirLinkCheckin()" style="display:none">📋 Link registro viajeros</button>
       <button class="btn btn-primary" onclick="saveReserva()">Guardar Reserva</button>
     </div>
   </div>
@@ -2119,6 +2127,8 @@ function renderConfig() {
   document.getElementById('cfg-nombre').value = DB.config.nombre || '';
   const suEl = document.getElementById('cfg-sheets-url');
   if (suEl) suEl.value = DB.config.sheetsUrl || '';
+  const buEl = document.getElementById('cfg-app-base-url');
+  if (buEl) buEl.value = DB.config.appBaseUrl || 'https://gerencia431.github.io/Surest/';
   document.getElementById('cfg-nif').value = DB.config.nif || '';
   document.getElementById('cfg-direccion').value = DB.config.direccion || '';
   document.getElementById('cfg-email').value = DB.config.email || '';
@@ -2172,6 +2182,8 @@ function saveConfig() {
   DB.config.nombre = document.getElementById('cfg-nombre').value;
   const suEl2 = document.getElementById('cfg-sheets-url');
   if (suEl2) DB.config.sheetsUrl = suEl2.value.trim();
+  const buEl2 = document.getElementById('cfg-app-base-url');
+  if (buEl2) DB.config.appBaseUrl = buEl2.value.trim();
   DB.config.nif = document.getElementById('cfg-nif').value;
   DB.config.direccion = document.getElementById('cfg-direccion').value;
   DB.config.email = document.getElementById('cfg-email').value;
@@ -3087,6 +3099,14 @@ function previewEmail() {
   const MAPS_LINK     = ec.mapsLink   ? `\n📍 Cómo llegar: ${ec.mapsLink}` : '';
   const APT_INFO      = ec.aptInfo    || '• Calentador de agua: armario técnico (encender 30 min antes)\n• Basura reciclaje: martes y jueves\n• Aire acondicionado: mando en cajón de mesita de noche';
   const EMERGENCIAS   = ec.emergencias|| (cfg.tel||'') + '\n' + (cfg.email||'');
+
+  // Link de registro de viajeros — se inserta automáticamente en el email de pre-llegada
+  const _sheetsUrl = getSheetsUrl();
+  const _baseUrl   = (cfg.appBaseUrl||'').replace(/\/$/,'') + '/';
+  const CHECKIN_LINK = (_sheetsUrl && cfg.appBaseUrl)
+    ? '\n\n📋 REGISTRO DE VIAJEROS (obligatorio por ley)\nPor favor, rellene los datos de todos los viajeros antes de su llegada. Solo tarda 2 minutos:\n' + _baseUrl + 'checkin.html?r=' + encodeURIComponent(r.id) + '&s=' + encodeURIComponent(_sheetsUrl)
+    : '';
+
   const PLAYAS        = ec.playas     || '• Cala Macarella — Aguas turquesas, a 15 min\n• Cala Turqueta — Espectacular, a 20 min\n• Son Bou — Playa más larga, a 25 min';
   const RESTAURANTES  = ec.restaurantes|| '• Ca na Fayas — Cocina menorquina\n• El Gallo — Mariscos frescos\n• Es Caliu — Carnes a la brasa';
   const ACTIVIDADES   = ec.actividades || '• Camí de Cavalls (ruta costera)\n• Alquiler de kayaks y paddle surf';
@@ -3187,7 +3207,7 @@ Llegada: ${fmtDate(r.entrada)} | Salida: ${fmtDate(r.salida)}
 ${HORARIOS}
 
 🗝 CÓDIGO DE ACCESO A SU APARTAMENTO
-${CODIGO_APT_TEXT}
+${CODIGO_APT_TEXT}${CHECKIN_LINK}
 
 📶 WIFI DEL APARTAMENTO
 ${INFO_WIFI}
@@ -3708,6 +3728,46 @@ function cargarPlantillasStandard() {
   toast('Plantillas estandar cargadas. Revisa y personaliza cada campo.');
 }
 
+function abrirLinkCheckin() {
+  const r = DB.reservas.find(x => x.id === _editingId);
+  if (!r) return;
+  const sheetsUrl = getSheetsUrl();
+  if (!sheetsUrl) {
+    toast('Configura la URL del Apps Script en Ajustes primero');
+    return;
+  }
+  // Build the checkin URL — uses configured base URL or auto-detects
+  const configuredBase = (DB.config && DB.config.appBaseUrl) || '';
+  const autoBase = location.origin + location.pathname.replace(/[^/]*$/, '');
+  const baseUrl = configuredBase ? configuredBase.replace(/\/$/, '') + '/' : autoBase;
+  const checkinUrl = baseUrl + 'checkin.html?r=' + encodeURIComponent(r.id) + '&s=' + encodeURIComponent(sheetsUrl);
+
+  // Show modal with link + QR
+  document.getElementById('checkin-link-url').value = checkinUrl;
+  document.getElementById('checkin-link-apt').textContent = 'Apt. ' + r.apt;
+  document.getElementById('checkin-link-dates').textContent = fmtDate(r.entrada) + ' - ' + fmtDate(r.salida);
+  const g = r.huespedes && r.huespedes[0];
+  document.getElementById('checkin-link-guest').textContent = g ? g.nombre + ' ' + (g.apellidos||'') : '—';
+  document.getElementById('checkin-link-status').innerHTML = r.checkinCompleted
+    ? '<span style="color:var(--green);font-weight:600">✓ Viajeros ya registrados (' + (r.checkinDate ? fmtDate(r.checkinDate.slice(0,10)) : '') + ')</span>'
+    : '<span style="color:var(--stone)">⏳ Pendiente de registro</span>';
+
+  // Generate QR using free API
+  const qrImg = document.getElementById('checkin-qr');
+  qrImg.src = 'https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=' + encodeURIComponent(checkinUrl);
+
+  document.getElementById('modal-checkin-link').style.display = 'flex';
+}
+
+function copiarLinkCheckin() {
+  const url = document.getElementById('checkin-link-url').value;
+  navigator.clipboard.writeText(url).then(() => toast('Link copiado al portapapeles'));
+}
+
+function cerrarCheckinModal() {
+  document.getElementById('modal-checkin-link').style.display = 'none';
+}
+
 function toggleSidebar(){
   document.querySelector('.sidebar').classList.toggle('open');
   document.getElementById('sidebar-overlay').classList.toggle('active');
@@ -3726,5 +3786,62 @@ document.addEventListener('DOMContentLoaded',function(){
 initApp();
 
 </script>
+
+<!-- MODAL CHECKIN LINK -->
+<div id="modal-checkin-link" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,0.5);
+  z-index:1000;align-items:center;justify-content:center;padding:20px">
+  <div style="background:#fff;border-radius:12px;width:100%;max-width:480px;
+    max-height:90vh;overflow-y:auto;padding:24px;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+      <div style="font-family:var(--font-serif);font-size:18px;color:var(--slate)">
+        📋 Formulario de registro de viajeros
+      </div>
+      <button onclick="cerrarCheckinModal()" style="background:none;border:none;font-size:20px;
+        color:var(--stone);cursor:pointer">✕</button>
+    </div>
+
+    <!-- Reserva info -->
+    <div style="background:var(--sand2);border-radius:8px;padding:12px 14px;margin-bottom:16px;font-size:13px">
+      <div style="font-weight:600;color:var(--slate)" id="checkin-link-apt"></div>
+      <div style="color:var(--stone);margin-top:2px" id="checkin-link-dates"></div>
+      <div style="color:var(--stone);margin-top:2px" id="checkin-link-guest"></div>
+      <div style="margin-top:6px" id="checkin-link-status"></div>
+    </div>
+
+    <!-- Instrucciones -->
+    <div style="font-size:12px;color:var(--stone);background:rgba(74,104,120,0.06);
+      border-radius:7px;padding:10px 12px;margin-bottom:14px;line-height:1.6">
+      Envía este link al huésped por email o WhatsApp. Lo abrirá desde su móvil y rellenará los datos de todos los viajeros. Cuando lo complete, aparecerá <strong>✓ Viajeros</strong> en la reserva y podrás generar el XML directamente.
+    </div>
+
+    <!-- Link + copy -->
+    <div style="margin-bottom:16px">
+      <label style="font-size:11px;font-weight:600;color:var(--stone);
+        text-transform:uppercase;letter-spacing:1px;margin-bottom:6px;display:block">URL del formulario</label>
+      <div style="display:flex;gap:8px">
+        <input id="checkin-link-url" type="text" readonly
+          style="flex:1;padding:9px 12px;border:1px solid var(--border2);border-radius:7px;
+          font-size:11px;font-family:monospace;background:var(--sand2);color:var(--slate)">
+        <button onclick="copiarLinkCheckin()" class="btn btn-outline btn-sm">Copiar</button>
+      </div>
+    </div>
+
+    <!-- QR -->
+    <div style="text-align:center;padding:16px 0;border-top:1px solid var(--border)">
+      <div style="font-size:12px;color:var(--stone);margin-bottom:10px;font-weight:500">
+        O muéstrale este QR (para cuando llegue)
+      </div>
+      <img id="checkin-qr" src="" alt="QR" style="border-radius:8px;border:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--stone);margin-top:8px">
+        Puedes imprimir el QR y pegarlo en la puerta del apartamento
+      </div>
+    </div>
+
+    <button onclick="cerrarCheckinModal()" class="btn btn-primary" style="width:100%;margin-top:16px">
+      Cerrar
+    </button>
+  </div>
+</div>
+
 </body>
 </html>
