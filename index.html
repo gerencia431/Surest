@@ -806,7 +806,12 @@ table.data-table { width: 100%; border-collapse: collapse; }
           <div class="card">
             <div class="card-title">Configuración de Envío</div>
             <div style="background:rgba(74,104,120,0.07);border-radius:8px;padding:12px 14px;margin-bottom:14px;font-size:12px;color:var(--slate);line-height:1.8">
-              <strong>Flujo de 4 emails recomendado:</strong><br>
+              <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                <strong>Flujo de 4 emails recomendado:</strong>
+                <button class="btn btn-outline btn-sm" onclick="cargarPlantillasStandard()" style="font-size:11px">
+                  ✨ Cargar plantillas estándar
+                </button>
+              </div>
               <span style="color:var(--stone)">
               1️⃣ <strong>Confirmación + Bienvenida</strong> — al confirmar la reserva<br>
               2️⃣ <strong>Info de interés</strong> — playas, restaurantes, actividades de Menorca<br>
@@ -3638,6 +3643,69 @@ function initApp() {
 // ==========================================================
 function renderAll() {
   renderPlanning();
+}
+
+function cargarPlantillasStandard() {
+  if (!confirm('Esto rellenara todos los campos de Plantillas Email con contenido de ejemplo para Surest Menorca. Los campos vacios se rellenaran y los que ya tengas escritos se respetaran. Continuar?')) return;
+
+  const cfg = DB.config;
+  const nombre = cfg.nombre || 'Apartamentos Surest Menorca';
+  const tel    = cfg.tel    || '+34 971 000 000';
+  const email  = cfg.email  || 'apartamentossurest@gmail.com';
+
+  const defaults = {
+    emailEnvio: email,
+    firma: `${nombre}\nTel: ${tel}\n${email}`,
+    intro: 'Gracias por elegir Surest Menorca para sus vacaciones. Es un placer recibirle y nuestro equipo esta a su disposicion para que su estancia sea perfecta.',
+    horarios: 'Entrada: a partir de las 16:00h · Salida: antes de las 11:00h\nSi su vuelo llega antes, podemos guardar su equipaje hasta que el apartamento este listo.',
+    wifi: 'Red: SUREST_WIFI · Contrasena: surest2024\n(Cada apartamento tiene su propia red — le indicamos los datos en el email de pre-llegada)',
+    mapsLink: '',
+    playas: `• Cala Macarella y Calamacarelleta — Las mas fotografiadas de la isla. Aguas turquesas increibles. Llegue antes de las 10h en julio/agosto.
+• Cala Turqueta — Salvaje y perfecta. Aparcar a 800m y caminar. Vale cada paso.
+• Son Bou — La playa mas larga de Menorca (2 km). Ideal para ninos por sus aguas tranquilas.
+• Cala Galdana — La mas cercana, 10 minutos. Perfecta los dias de viento del norte (tramontana).
+• Cala Pregonda — La joya del norte. Arena rojiza unica en la isla. Solo accesible a pie o en barca.
+• Arenal de Son Saura — Doble cala en zona protegida. Tranquila y familiar.`,
+    restaurantes: `• Ca na Fayas (Ferreries) — Cocina menorquina autentica. La caldereta de langosta es imprescindible. Reservar con antelacion.
+• El Gallo (Ciudadela) — Pescado y marisco del dia. Terraza sobre el puerto. Mejor al atardecer.
+• Es Caliu (Alaior) — Carnes a la brasa en masia rustica. Ambiente inmejorable. Solo cena.
+• Bar Triton (Cala en Porter) — Chiringuito clasico con vistas imposibles. Ideal para comer o tomar algo.
+• Mercat des Claustre (Ciudadela) — Mercado gastronomico en claustro historico. Ideal para tapear varios platos.
+• La Minerva (Mao) — Restaurante sobre el puerto natural mas grande de Europa. Vistas increibles.`,
+    actividades: `• Cami de Cavalls — Ruta de 186 km por toda la costa. Puede hacerse por etapas a pie o en bici. Paisajes unicos.
+• Ciudadela — La antigua capital. Catedral, palacios barrocos, puerto natural con barcas de colores. Mercado los martes y sabados.
+• Mao / Mahon — La capital. Puerto natural espectacular. Destileria Xoriguer (gin local), mercado del Claustre, museo de Menorca.
+• Kayak y paddle surf — Alquiler disponible en Son Bou, Cala Galdana y Ciudadela. Perfecta para explorar calas inaccesibles.
+• Naveta des Tudons — Monumento megalitico prehistorico (2000 a.C.), el mas famoso de Menorca. A 5 min de Ciudadela.
+• Buceo y snorkel — Reserva de la Biosfera con fondos marinos protegidos. Varias escuelas en la isla.`,
+    aptInfo: `• Calentador de agua electrico: armario tecnico del bano. Encender 30 min antes de ducharse y apagar despues.
+• Basura: contenedores en la calle principal. Reciclaje: martes y jueves. Organicos: todos los dias.
+• Aire acondicionado: mando en el cajon de la mesita de noche. Temperatura recomendada 23-25 grados.
+• Toallas de playa: en el armario del bano. Las toallas de ducha se cambian cada 3 dias.
+• Aparcamiento: gratuito en el parking del complejo. No dejar objetos de valor visibles en el coche.
+• Silencio: a partir de las 23:00h por respeto a los demas huespedes y vecinos.`,
+    emergencias: `📞 Urgencias (24h): ${tel}
+📱 WhatsApp disponible de 8:00 a 22:00h
+✉ Email: ${email}
+
+🚨 Emergencias generales: 112
+🚑 Centro de Salud Ciudadela: +34 971 480 112
+🔥 Bomberos: 080
+👮 Policia Local Ciudadela: +34 971 381 787`,
+    linkBooking: '',
+    linkGoogle: '',
+    linkAirbnb: ''
+  };
+
+  // Only fill empty fields (respect what user already typed)
+  const ec = DB.config.emailConfig || {};
+  Object.keys(defaults).forEach(k => {
+    if (!ec[k]) ec[k] = defaults[k];
+  });
+  DB.config.emailConfig = ec;
+  saveDB();
+  renderEmailsConfig();
+  toast('Plantillas estandar cargadas. Revisa y personaliza cada campo.');
 }
 
 function toggleSidebar(){
