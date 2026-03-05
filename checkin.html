@@ -175,72 +175,52 @@ async function init(){
 function addGuest(){
   guestN++;
   const n=guestN, isFirst=n===1;
-  const paisOpts = PAISES.map(([v,l])=>`<option value="${v}"${v==='ESP'?' selected':''}>${l}</option>`).join('');
-  const docOpts  = DOCS.map(([v,l])=>`<option value="${v}">${l}</option>`).join('');
+  const paisOpts = PAISES.map(([v,l])=>'<option value="'+v+'"'+(v==='ESP'?' selected':'')+'>'+l+'</option>').join('');
+  const docOpts  = DOCS.map(([v,l])=>'<option value="'+v+'">'+l+'</option>').join('');
   const div=document.createElement('div');
   div.className='card'; div.id='g'+n;
-  div.innerHTML=`
-    <div class="card-header">
-      <div style="display:flex;align-items:center;gap:10px">
-        <div class="guest-num">${n}</div>
-        <div class="card-title">${isFirst?'Titular de la reserva':'Viajero '+n}</div>
-      </div>
-      ${!isFirst?`<button class="btn-rm" onclick="rmGuest(${n})">✕</button>`:''}
-    </div>
-    <div class="row2">
-      <div class="field"><label>Nombre *</label>
-        <input id="g${n}nom" type="text" placeholder="María" autocapitalize="words"></div>
-      <div class="field"><label>Apellidos *</label>
-        <input id="g${n}ape" type="text" placeholder="García López" autocapitalize="words"></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>Tipo doc. *</label>
-        <select id="g${n}tdoc">${docOpts}</select></div>
-      <div class="field"><label>Nº documento *</label>
-        <input id="g${n}ndoc" type="text" placeholder="12345678A" style="text-transform:uppercase"></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>Fecha nacimiento *</label>
-        <input id="g${n}fnac" type="date" max="${new Date().toISOString().slice(0,10)}"></div>
-      <div class="field"><label>Nacionalidad *</label>
-        <select id="g${n}nac">${paisOpts}</select></div>
-    </div>
-    <div class="field"><label>Sexo *</label>
-      <select id="g${n}sex">
-        <option value="">— Seleccionar —</option>
-        <option value="H">Hombre</option>
-        <option value="M">Mujer</option>
-      </select>
-    </div>
-    <div class="row2">
-      <div class="field"><label>Nº Soporte documento <span style="font-weight:400;font-size:10px;color:var(--stone)">(si DNI/NIE)</span></label>
-        <input id="g${n}soporte" type="text" placeholder="AAA000000" style="text-transform:uppercase"></div>
-      <div class="field"><label>Fecha expedición documento</label>
-        <input id="g${n}fexp" type="date" max="${new Date().toISOString().slice(0,10)}"></div>
-    </div>
-    <div class="field"><label>Dirección habitual *</label>
-      <input id="g${n}dir" type="text" placeholder="Calle Mayor 10, 2º A" autocapitalize="sentences"></div>
-    <div class="row2">
-      <div class="field"><label>Municipio *</label>
-        <input id="g${n}mun" type="text" placeholder="Barcelona"></div>
-      <div class="field"><label>Código postal *</label>
-        <input id="g${n}cp" type="text" placeholder="08001" inputmode="numeric"></div>
-    </div>
-    <div class="row2">
-      <div class="field"><label>País de residencia *</label>
-        <select id="g${n}pres">${paisOpts}</select></div>
-      ${!isFirst ? `<div class="field"><label>Parentesco con titular *</label>
-        <select id="g${n}par">
-          <option value="CO">Cónyuge / Pareja</option>
-          <option value="HI">Hijo/a</option>
-          <option value="FA">Familiar</option>
-          <option value="AM">Amigo/a</option>
-          <option value="OT">Otro</option>
-        </select></div>` : '<div class="field"></div>'}
-    </div>
-    ${isFirst?`<div class="field"><label>Teléfono de contacto</label>
-      <input id="g${n}tel" type="tel" placeholder="+34 600 000 000"></div>`:''}
-  `;
+  const today = new Date().toISOString().slice(0,10);
+  const btnRm = !isFirst ? '<button class="btn-rm" onclick="rmGuest('+n+')">&#x2715;</button>' : '';
+  const parentescoField = !isFirst
+    ? '<div class="field"><label>Parentesco con titular *</label><select id="g'+n+'par"><option value="CO">C&oacute;nyuge / Pareja</option><option value="HI">Hijo/a</option><option value="FA">Familiar</option><option value="AM">Amigo/a</option><option value="OT">Otro</option></select></div>'
+    : '<div class="field"></div>';
+  const telField = isFirst
+    ? '<div class="field"><label>Tel&eacute;fono de contacto</label><input id="g'+n+'tel" type="tel" placeholder="+34 600 000 000"></div>'
+    : '';
+  div.innerHTML =
+    '<div class="card-header">' +
+      '<div style="display:flex;align-items:center;gap:10px">' +
+        '<div class="guest-num">'+n+'</div>' +
+        '<div class="card-title">'+(isFirst?'Titular de la reserva':'Viajero '+n)+'</div>' +
+      '</div>' + btnRm +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Nombre *</label><input id="g'+n+'nom" type="text" placeholder="Mar&iacute;a" autocapitalize="words"></div>' +
+      '<div class="field"><label>Apellidos *</label><input id="g'+n+'ape" type="text" placeholder="Garc&iacute;a L&oacute;pez" autocapitalize="words"></div>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Tipo doc. *</label><select id="g'+n+'tdoc">'+docOpts+'</select></div>' +
+      '<div class="field"><label>N&ordm; documento *</label><input id="g'+n+'ndoc" type="text" placeholder="12345678A" style="text-transform:uppercase"></div>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Fecha nacimiento *</label><input id="g'+n+'fnac" type="date" max="'+today+'"></div>' +
+      '<div class="field"><label>Nacionalidad *</label><select id="g'+n+'nac">'+paisOpts+'</select></div>' +
+    '</div>' +
+    '<div class="field"><label>Sexo *</label><select id="g'+n+'sex"><option value="">&mdash; Seleccionar &mdash;</option><option value="H">Hombre</option><option value="M">Mujer</option></select></div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>N&ordm; Soporte <span style="font-weight:400;font-size:10px;color:var(--stone)">(DNI/NIE)</span></label><input id="g'+n+'soporte" type="text" placeholder="AAA000000" style="text-transform:uppercase"></div>' +
+      '<div class="field"><label>Fecha expedici&oacute;n doc.</label><input id="g'+n+'fexp" type="date" max="'+today+'"></div>' +
+    '</div>' +
+    '<div class="field"><label>Direcci&oacute;n habitual *</label><input id="g'+n+'dir" type="text" placeholder="Calle Mayor 10, 2&ordm; A" autocapitalize="sentences"></div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Municipio *</label><input id="g'+n+'mun" type="text" placeholder="Barcelona"></div>' +
+      '<div class="field"><label>C&oacute;digo postal *</label><input id="g'+n+'cp" type="text" placeholder="08001" inputmode="numeric"></div>' +
+    '</div>' +
+    '<div class="row2">' +
+      '<div class="field"><label>Pa&iacute;s de residencia *</label><select id="g'+n+'pres">'+paisOpts+'</select></div>' +
+      parentescoField +
+    '</div>' +
+    telField;
   document.getElementById('guests-wrap').appendChild(div);
   if(guestN>=12) document.getElementById('btn-add').style.display='none';
 }
