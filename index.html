@@ -1058,8 +1058,9 @@ table.data-table { width: 100%; border-collapse: collapse; }
               <button class="btn btn-outline" onclick="loadDemoData()" style="border-color:var(--amber);color:var(--amber)">🎯 Cargar datos demo</button>
               <button class="btn btn-danger btn-sm" onclick="if(confirm('¿Borrar TODOS los datos de reservas? La configuración se mantiene.'))clearData()">🗑 Borrar reservas y partes</button>
               <button class="btn btn-danger btn-sm" onclick="resetEmailConfig()">✉ Resetear plantillas email</button>
+              <button class="btn btn-danger btn-sm" onclick="resetParteCounter()">🔢 Resetear contador partes</button>
             </div>
-            <div style="font-size:11px;color:var(--stone);margin-top:8px">«Datos demo» carga reservas de ejemplo para probar la aplicación. «Borrar» elimina todas las reservas pero mantiene la configuración.</div>
+            <div style="font-size:11px;color:var(--stone);margin-top:8px">«Datos demo» carga reservas de ejemplo para probar la aplicación. «Borrar» elimina todas las reservas pero mantiene la configuración. «Resetear contador partes» pone el número de parte a 0 (útil antes de empezar la temporada real).</div>
           </div>
         </div>
       </div>
@@ -1398,14 +1399,18 @@ function checkSheetsOnLoad() {
   // Auto-sync from Sheets on every load if URL is configured
   // Shows a small loading indicator, doesn't interrupt the UI
   setSheetsStatus('Sincronizando con Sheets...', 'var(--stone)');
-  fetch(url + '?action=load')
+  fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'text/plain' },
+    body: JSON.stringify({ action: 'load' })
+  })
     .then(r => r.json())
-    .then(data => {
-      if (data && data.reservas) {
+    .then(d => {
+      if (d.ok && d.data) {
         // Merge: keep config from localStorage, take reservas/huespedes/facturas/partes from Sheets
         const localConfig = DB.config;
-        DB = data;
-        // If local config is newer (has more fields), prefer it
+        DB = d.data;
+        // If local config has the sheetsUrl (i.e. was configured here), keep it
         if (localConfig && localConfig.sheetsUrl) DB.config = localConfig;
         saveDB();
         renderAll();
@@ -3189,7 +3194,7 @@ function previewEmail() {
   const aptCodes = cfg.aptCodigos || {};
   const codigoApt = aptCodes[r.apt] || null;
   const CODIGO_APT_TEXT = codigoApt
-    ? `🗝 Código caja de llaves Apt. ${r.apt}: ${codigoApt}\nLa caja está en la entrada del complejo. Marque el código, extraiga la llave y cierre la caja.`
+    ? `🗝 Código caja de llaves Apt. ${r.apt}: ${codigoApt}\nLa caja está justo en la entrada del apartamento, ponga el código y la llave le espera dentro. Recuerde dejar la llave en el mismo lugar el día de la salida.`
     : 'Le enviaremos el código de acceso 24 horas antes de su llegada.';
   const aptWifiAll = cfg.aptWifi || {};
   const aptWifiThis = aptWifiAll[r.apt] || '';
@@ -4059,6 +4064,18 @@ function resetEmailConfig() {
   saveDB();
   renderEmailsConfig();
   toast('✓ Plantillas de email reseteadas. Pulsa "Aplicar plantillas Surest" para cargar los textos.');
+}
+
+function resetParteCounter() {
+  const current = DB.config.parteNumCounter || 0;
+  const val = prompt(`El contador actual está en ${current}.\n¿A qué número quieres resetearlo? (normalmente 0 para empezar de cero)`, '0');
+  if (val === null) return;
+  const n = parseInt(val);
+  if (isNaN(n) || n < 0) { toast('⚠ Número no válido'); return; }
+  DB.config.parteNumCounter = n;
+  saveDB();
+  syncToSheets(true);
+  toast('✓ Contador de partes reseteado a ' + n + '. El próximo parte será el #' + String(n+1).padStart(4,'0'));
 }
 
 function cargarPeriodosEstandar() {
