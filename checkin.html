@@ -133,7 +133,7 @@ input.err,select.err{border-color:var(--red)!important}
   </div>
 
 </div>
-<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script data-cfasync="false">
 const P = new URLSearchParams(location.search);
 const RES_ID = P.get('r') || '';
 const SH_URL  = P.get('s') || '';
@@ -271,4 +271,16 @@ async function submitForm(){
     const r=await fetch(SH_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({action:'saveCheckin',reservaId:RES_ID,guests,submittedAt:new Date().toISOString()})});
     const d=await r.json();
-    if(d.ok) sh
+    if(d.ok) show('s-success');
+    else throw new Error(d.error||'Error');
+  }catch(e){
+    document.getElementById('btn-submit').disabled=false;
+    document.getElementById('spinner').style.display='none';
+    alert('Error al enviar. Inténtalo de nuevo o contacta con nosotros.');
+  }
+}
+
+init();
+</script>
+</body>
+</html>
