@@ -2147,8 +2147,8 @@ function generarParte() {
       partesXml += `      <datosPersona>
         <rol>${rol}</rol>
         <nombre>${esc(h.nombre||'')}</nombre>
-        <apellido1>${ape1}</apellido1>
-        <apellido2>${ape2}</apellido2>
+        <apellido1>${ape1}</apellido1>${ape2 ? `
+        <apellido2>${ape2}</apellido2>` : ''}
         <tipoDocumento>${tipoDocSES[h.tipoDoc] || 'D'}</tipoDocumento>
         <numeroDocumento>${esc((h.numDoc||'').toUpperCase())}</numeroDocumento>${h.numSoporte ? `
         <soporteDocumento>${esc(h.numSoporte.toUpperCase())}</soporteDocumento>` : ''}${h.fechaExpedicion ? `
