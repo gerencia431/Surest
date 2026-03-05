@@ -86,7 +86,7 @@ input.err,select.err{border-color:var(--red)!important}
       <div class="big-title">Enlace no válido</div>
       <p class="big-sub" id="err-msg">No encontramos su reserva.<br>Contacte con nosotros.</p>
       <p style="margin-top:16px;font-size:13px">
-        <a href="mailto:apartamentossurest@gmail.com" style="color:var(--blue)">apartamentossurest@gmail.com</a>
+        <a href="/cdn-cgi/l/email-protection#fc9d8c9d8e889d91999288938f8f898e998f88bc9b919d9590d29f9391" style="color:var(--blue)"><span class="__cf_email__" data-cfemail="6d0c1d0c1f190c00080319021e1e181f081e192d0a000c0401430e0200">[email&#160;protected]</span></a>
       </p>
     </div>
   </div>
@@ -113,7 +113,7 @@ input.err,select.err{border-color:var(--red)!important}
     <div id="guests-wrap"></div>
     <button class="btn-add" id="btn-add" onclick="addGuest()">+ Añadir otro viajero</button>
     <div class="legal">
-      Tratamiento de datos: Apartamentos Surest Menorca. Finalidad: cumplimiento del RD 933/2021 sobre registro de viajeros. Los datos serán comunicados a las autoridades competentes. Conservación: 3 años. Derechos ARCO: apartamentossurest@gmail.com
+      Tratamiento de datos: Apartamentos Surest Menorca. Finalidad: cumplimiento del RD 933/2021 sobre registro de viajeros. Los datos serán comunicados a las autoridades competentes. Conservación: 3 años. Derechos ARCO: <a href="/cdn-cgi/l/email-protection" class="__cf_email__" data-cfemail="721302130006131f171c061d0101070017010632151f131b1e5c111d1f">[email&#160;protected]</a>
     </div>
     <button class="btn-submit" id="btn-submit" onclick="submitForm()">
       ✓ Enviar datos de viajeros
@@ -133,7 +133,7 @@ input.err,select.err{border-color:var(--red)!important}
   </div>
 
 </div>
-<script>
+<script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
 const P = new URLSearchParams(location.search);
 const RES_ID = P.get('r') || '';
 const SH_URL  = P.get('s') || '';
@@ -212,6 +212,32 @@ function addGuest(){
         <option value="M">Mujer</option>
       </select>
     </div>
+    <div class="row2">
+      <div class="field"><label>Nº Soporte documento <span style="font-weight:400;font-size:10px;color:var(--stone)">(si DNI/NIE)</span></label>
+        <input id="g${n}soporte" type="text" placeholder="AAA000000" style="text-transform:uppercase"></div>
+      <div class="field"><label>Fecha expedición documento</label>
+        <input id="g${n}fexp" type="date" max="${new Date().toISOString().slice(0,10)}"></div>
+    </div>
+    <div class="field"><label>Dirección habitual *</label>
+      <input id="g${n}dir" type="text" placeholder="Calle Mayor 10, 2º A" autocapitalize="sentences"></div>
+    <div class="row2">
+      <div class="field"><label>Municipio *</label>
+        <input id="g${n}mun" type="text" placeholder="Barcelona"></div>
+      <div class="field"><label>Código postal *</label>
+        <input id="g${n}cp" type="text" placeholder="08001" inputmode="numeric"></div>
+    </div>
+    <div class="row2">
+      <div class="field"><label>País de residencia *</label>
+        <select id="g${n}pres">${paisOpts}</select></div>
+      ${!isFirst ? `<div class="field"><label>Parentesco con titular *</label>
+        <select id="g${n}par">
+          <option value="CO">Cónyuge / Pareja</option>
+          <option value="HI">Hijo/a</option>
+          <option value="FA">Familiar</option>
+          <option value="AM">Amigo/a</option>
+          <option value="OT">Otro</option>
+        </select></div>` : '<div class="field"></div>'}
+    </div>
     ${isFirst?`<div class="field"><label>Teléfono de contacto</label>
       <input id="g${n}tel" type="tel" placeholder="+34 600 000 000"></div>`:''}
   `;
@@ -233,7 +259,7 @@ async function submitForm(){
   const guests=[];
   for(let i=1;i<=guestN;i++){
     if(!document.getElementById('g'+i)) continue;
-    const fields=['nom','ape','ndoc','fnac','sex'];
+    const fields=['nom','ape','ndoc','fnac','sex','dir','mun','cp'];
     fields.forEach(f=>{if(!req('g'+i+f)) ok=false;});
     if(!ok) continue;
     guests.push({
@@ -241,9 +267,16 @@ async function submitForm(){
       apellidos:val('g'+i+'ape'),
       tipoDoc:  val('g'+i+'tdoc'),
       numDoc:   val('g'+i+'ndoc').toUpperCase(),
+      numSoporte: val('g'+i+'soporte').toUpperCase(),
+      fechaExpedicion: val('g'+i+'fexp'),
       fechaNac: val('g'+i+'fnac'),
       nacionalidad: val('g'+i+'nac'),
       sexo:     val('g'+i+'sex'),
+      paisResidencia: val('g'+i+'pres') || val('g'+i+'nac'),
+      direccion: val('g'+i+'dir'),
+      municipio: val('g'+i+'mun'),
+      codPostal: val('g'+i+'cp'),
+      parentesco: val('g'+i+'par') || 'T',
       tel:      val('g'+i+'tel')||''
     });
   }
@@ -256,17 +289,4 @@ async function submitForm(){
     const r=await fetch(SH_URL,{method:'POST',headers:{'Content-Type':'text/plain'},
       body:JSON.stringify({action:'saveCheckin',reservaId:RES_ID,guests,submittedAt:new Date().toISOString()})});
     const d=await r.json();
-    if(d.ok) show('s-success');
-    else throw new Error(d.error||'Error');
-  }catch(e){
-    document.getElementById('btn-submit').disabled=false;
-    document.getElementById('spinner').style.display='none';
-    alert('Error al enviar. Inténtalo de nuevo o contacta con nosotros.');
-  }
-}
-
-function fmt(s){if(!s)return'—';const[y,m,d]=s.split('-');return d+'/'+m+'/'+y;}
-init();
-</script>
-</body>
-</html>
+    if(d.ok) sh

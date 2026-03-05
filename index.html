@@ -2111,34 +2111,73 @@ function generarParte() {
   if (!DB.partesHistorial) DB.partesHistorial = [];
   const parteNum = (DB.config.parteNumCounter || 0) + 1;
 
-  let xml = `<?xml version="1.0" encoding="UTF-8"?>
-<!-- Parte de Viajeros #${String(parteNum).padStart(4,'0')} | Fecha: ${fecha} | Surest Menorca -->
-<PETICION>
-  <ESTABLECIMIENTO CODIGO="${codigoEst}">
-`;
+  // Mapeado tipos de documento al código SES
+  const tipoDocSES = { D:'D', P:'P', N:'N', C:'X' };
+  // Mapeado parentesco al código SES
+  const parentescoSES = { T:'TI', CO:'CO', HI:'HI', FA:'FA', AM:'AM', OT:'OT' };
+
+  function esc(s) { return (s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
+  function isoToSes(d) { return (d||'').replace(/-/g,''); } // AAAAMMDD
 
   let viajeroCount = 0;
+  let partesXml = '';
+
   checkins.forEach(r => {
-    (r.huespedes || []).forEach(h => {
+    const hList = r.huespedes || [];
+    if (!hList.length) return;
+    const refContrato = r.id ? r.id.slice(-8).toUpperCase() : String(parteNum).padStart(8,'0');
+
+    partesXml += `    <parteViajeros>
+      <contrato>
+        <referencia>${esc(refContrato)}</referencia>
+        <fechaContrato>${isoToSes(r.entrada)}</fechaContrato>
+        <fechaEntrada>${isoToSes(r.entrada)}</fechaEntrada>
+        <fechaSalida>${isoToSes(r.salida)}</fechaSalida>
+        <numPersonas>${hList.length}</numPersonas>
+        <establecimiento>${esc(codigoEst)}</establecimiento>
+      </contrato>\n`;
+
+    hList.forEach((h, idx) => {
       viajeroCount++;
-      xml += `    <VIAJERO>
-      <TIPO_DOC>${h.tipoDoc || 'D'}</TIPO_DOC>
-      <NUM_DOC>${h.numDoc || ''}</NUM_DOC>
-      <NOMBRE>${h.nombre || ''}</NOMBRE>
-      <APE1>${(h.apellidos||'').split(' ')[0] || ''}</APE1>
-      <APE2>${(h.apellidos||'').split(' ').slice(1).join(' ') || ''}</APE2>
-      <FECHA_NAC>${(h.fechaNac||'').replace(/-/g,'')}</FECHA_NAC>
-      <SEXO>${h.sexo || 'H'}</SEXO>
-      <PAIS_NAC>${h.nacionalidad || 'ESP'}</PAIS_NAC>
-      <FECHA_ENTRADA>${fecha.replace(/-/g,'')}</FECHA_ENTRADA>
-      <APARTAMENTO>${r.apt}</APARTAMENTO>
-    </VIAJERO>
-`;
+      const ape = (h.apellidos||'').trim().split(/\s+/);
+      const ape1 = esc(ape[0] || '');
+      const ape2 = esc(ape.slice(1).join(' ') || '');
+      const rol = idx === 0 ? 'TI' : (parentescoSES[h.parentesco] || 'OT');
+
+      partesXml += `      <datosPersona>
+        <rol>${rol}</rol>
+        <nombre>${esc(h.nombre||'')}</nombre>
+        <apellido1>${ape1}</apellido1>
+        <apellido2>${ape2}</apellido2>
+        <tipoDocumento>${tipoDocSES[h.tipoDoc] || 'D'}</tipoDocumento>
+        <numeroDocumento>${esc((h.numDoc||'').toUpperCase())}</numeroDocumento>${h.numSoporte ? `
+        <soporteDocumento>${esc(h.numSoporte.toUpperCase())}</soporteDocumento>` : ''}${h.fechaExpedicion ? `
+        <fechaExpedicion>${isoToSes(h.fechaExpedicion)}</fechaExpedicion>` : ''}
+        <fechaNacimiento>${isoToSes(h.fechaNac)}</fechaNacimiento>
+        <sexo>${h.sexo === 'M' ? 'F' : (h.sexo === 'H' ? 'M' : '')}</sexo>
+        <nacionalidad>${esc(h.nacionalidad||'ESP')}</nacionalidad>${h.paisResidencia ? `
+        <paisResidencia>${esc(h.paisResidencia||h.nacionalidad||'ESP')}</paisResidencia>` : ''}${h.direccion ? `
+        <direccion>${esc(h.direccion)}</direccion>` : ''}${h.municipio ? `
+        <municipio>${esc(h.municipio)}</municipio>` : ''}${h.codPostal ? `
+        <codigoPostal>${esc(h.codPostal)}</codigoPostal>` : ''}${(h.email||h.tel) ? `
+        <contacto>${h.email?`<email>${esc(h.email)}</email>`:''}${h.tel?`<telefono>${esc(h.tel)}</telefono>`:''}</contacto>` : ''}
+      </datosPersona>\n`;
     });
+
+    partesXml += `    </parteViajeros>\n`;
   });
 
-  xml += `  </ESTABLECIMIENTO>
-</PETICION>`;
+  const xml = `<?xml version="1.0" encoding="UTF-8"?>
+<!-- Parte de Viajeros SES.Hospedajes #${String(parteNum).padStart(4,'0')} | ${fecha} | Surest Menorca -->
+<peticion xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+  <cabecera>
+    <codigoEstablecimiento>${esc(codigoEst)}</codigoEstablecimiento>
+    <tipoComunicacion>PARTE_VIAJEROS</tipoComunicacion>
+    <fechaGeneracion>${new Date().toISOString().slice(0,10).replace(/-/g,'')}</fechaGeneracion>
+  </cabecera>
+  <solicitud>
+${partesXml}  </solicitud>
+</peticion>`;
   _parteXML = xml;
 
   // Save to history
@@ -2427,8 +2466,30 @@ function addGuestForm(data = {}) {
     </div>
     <div class="form-row fr3">
       <div class="field"><label>Nacionalidad (código país)</label><input type="text" id="${id}-nacionalidad" value="${data.nacionalidad||'ESP'}" placeholder="ESP, FRA, GBR..."></div>
+      <div class="field"><label>Nº Soporte doc.</label><input type="text" id="${id}-numSoporte" value="${data.numSoporte||''}" placeholder="AAA000000" style="text-transform:uppercase"></div>
+      <div class="field"><label>Fecha expedición doc.</label><input type="date" id="${id}-fechaExpedicion" value="${data.fechaExpedicion||''}"></div>
+    </div>
+    <div class="form-row fr3">
       <div class="field"><label>Email</label><input type="email" id="${id}-email" value="${data.email||''}"></div>
       <div class="field"><label>Teléfono</label><input type="tel" id="${id}-tel" value="${data.tel||''}"></div>
+      <div class="field"><label>Parentesco con titular</label>
+        <select id="${id}-parentesco">
+          <option value="T" ${(data.parentesco||'T')==='T'?'selected':''}>Titular</option>
+          <option value="CO" ${data.parentesco==='CO'?'selected':''}>Cónyuge/Pareja</option>
+          <option value="HI" ${data.parentesco==='HI'?'selected':''}>Hijo/a</option>
+          <option value="FA" ${data.parentesco==='FA'?'selected':''}>Familiar</option>
+          <option value="AM" ${data.parentesco==='AM'?'selected':''}>Amigo/a</option>
+          <option value="OT" ${data.parentesco==='OT'?'selected':''}>Otro</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-row fr4">
+      <div class="field" style="grid-column:1/-1"><label>Dirección habitual</label><input type="text" id="${id}-direccion" value="${data.direccion||''}" placeholder="Calle, número, piso..."></div>
+    </div>
+    <div class="form-row fr3">
+      <div class="field"><label>Municipio</label><input type="text" id="${id}-municipio" value="${data.municipio||''}" placeholder="Madrid"></div>
+      <div class="field"><label>Código postal</label><input type="text" id="${id}-codPostal" value="${data.codPostal||''}" placeholder="28001"></div>
+      <div class="field"><label>País residencia</label><input type="text" id="${id}-paisResidencia" value="${data.paisResidencia||data.nacionalidad||'ESP'}" placeholder="ESP, FRA..."></div>
     </div>`;
   document.getElementById('guest-forms').appendChild(div);
 }
@@ -2455,9 +2516,16 @@ function collectGuests() {
       apellidos: document.getElementById(id+'-apellidos')?.value || '',
       tipoDoc: document.getElementById(id+'-tipoDoc')?.value || 'D',
       numDoc: document.getElementById(id+'-numDoc')?.value || '',
+      numSoporte: document.getElementById(id+'-numSoporte')?.value || '',
+      fechaExpedicion: document.getElementById(id+'-fechaExpedicion')?.value || '',
       fechaNac: document.getElementById(id+'-fechaNac')?.value || '',
       sexo: document.getElementById(id+'-sexo')?.value || 'H',
       nacionalidad: document.getElementById(id+'-nacionalidad')?.value || 'ESP',
+      paisResidencia: document.getElementById(id+'-paisResidencia')?.value || '',
+      direccion: document.getElementById(id+'-direccion')?.value || '',
+      municipio: document.getElementById(id+'-municipio')?.value || '',
+      codPostal: document.getElementById(id+'-codPostal')?.value || '',
+      parentesco: document.getElementById(id+'-parentesco')?.value || 'T',
       email: document.getElementById(id+'-email')?.value || '',
       tel: document.getElementById(id+'-tel')?.value || '',
     };
