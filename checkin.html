@@ -150,6 +150,8 @@ const PAISES = [
 
 const DOCS = [['D','DNI'],['P','Pasaporte'],['N','NIE'],['X','Otro']];
 
+function fmt(s){if(!s)return'—';const[y,m,d]=s.split('-');return d+'/'+m+'/'+y;}
+
 function show(id){['s-loading','s-error','s-done','s-form','s-success'].forEach(s=>{
   document.getElementById(s).classList.toggle('active', s===id);
 });}
