@@ -767,10 +767,10 @@ table.data-table { width: 100%; border-collapse: collapse; }
 
         <div style="display:grid;grid-template-columns:1fr 340px;gap:16px;align-items:start">
           <div class="card">
-            <div class="card-title">Generar Parte de Viajeros — WebHospederías</div>
+            <div class="card-title">Generar Parte de Viajeros — SES.Hospedajes</div>
             <div style="background:rgba(74,104,120,0.08);border:1px solid rgba(74,104,120,0.2);border-radius:8px;padding:12px 16px;margin-bottom:18px;font-size:12px;color:var(--blue);line-height:1.9">
-              ℹ️ Genera el XML para cada día con entradas y súbelo manualmente a <strong>WebHospederías</strong> (portal de la Guardia Civil).<br>
-              Cada parte queda guardado con número correlativo en el historial. Puedes editar o eliminar partes ya generados.
+              ℹ️ Genera el XML para cada día con entradas y súbelo a <strong>SES.Hospedajes</strong> (sede.mir.gob.es) → Alta masiva → Parte de viajeros.<br>
+              Cada parte se guarda en el historial y en Google Sheets automáticamente como backup.
             </div>
             <div class="filter-bar" style="margin-bottom:16px">
               <input type="date" id="parte-fecha" value="">
@@ -780,8 +780,11 @@ table.data-table { width: 100%; border-collapse: collapse; }
             <div id="parte-preview-area"></div>
           </div>
           <div class="card">
-            <div class="card-title">Historial de Partes</div>
-            <div style="font-size:12px;color:var(--stone);margin-bottom:12px">Partes generados y descargados</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px">
+              <div class="card-title">Historial de Partes</div>
+              <button class="btn btn-outline btn-sm" onclick="exportarTodosPartes()" title="Descargar todos los XML en ZIP">📦 Exportar todo</button>
+            </div>
+            <div style="font-size:12px;color:var(--stone);margin-bottom:12px">Guardados también en Google Sheets · hoja «Partes»</div>
             <div id="partes-historial"></div>
           </div>
         </div>
@@ -2182,10 +2185,12 @@ ${partesXml}  </solicitud>
 
   // Save to history
   const parteId = uid();
-  DB.partesHistorial.push({ id: parteId, num: parteNum, fecha, viajeros: viajeroCount, xml, generadoEn: new Date().toISOString() });
+  const nuevoParte = { id: parteId, num: parteNum, fecha, viajeros: viajeroCount, xml, generadoEn: new Date().toISOString() };
+  DB.partesHistorial.push(nuevoParte);
   DB.config.parteNumCounter = parteNum;
   saveDB();
   renderPartesHistorial();
+  logParteEnSheets(nuevoParte); // backup silencioso en Sheets
 
   const huespTotal = checkins.reduce((s,r) => s + (r.huespedes||[]).length, 0);
   document.getElementById('parte-preview-area').innerHTML = `
@@ -2226,6 +2231,72 @@ function eliminarParte(id) {
   saveDB(); renderPartesHistorial();
   toast('✓ Parte eliminado');
 }
+
+// Exportar todos los partes como ficheros XML individuales en un ZIP
+async function exportarTodosPartes() {
+  const partes = DB.partesHistorial || [];
+  if (!partes.length) { toast('No hay partes en el historial'); return; }
+
+  // Usamos JSZip si está disponible, si no descargamos uno a uno
+  try {
+    // Intentar cargar JSZip dinámicamente
+    if (typeof JSZip === 'undefined') {
+      await new Promise((res, rej) => {
+        const s = document.createElement('script');
+        s.src = 'https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js';
+        s.onload = res; s.onerror = rej;
+        document.head.appendChild(s);
+      });
+    }
+    const zip = new JSZip();
+    partes.forEach(p => {
+      const fname = `parte_${String(p.num).padStart(4,'0')}_${p.fecha}.xml`;
+      zip.file(fname, p.xml);
+    });
+    const blob = await zip.generateAsync({ type: 'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `partes_viajeros_surest_${new Date().toISOString().slice(0,10)}.zip`;
+    a.click(); URL.revokeObjectURL(a.href);
+    toast(`✓ ZIP con ${partes.length} partes descargado`);
+  } catch(e) {
+    // Fallback: descargar uno a uno
+    toast('Descargando partes individualmente...');
+    partes.forEach((p, i) => {
+      setTimeout(() => {
+        const blob = new Blob([p.xml], { type: 'application/xml' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = `parte_${String(p.num).padStart(4,'0')}_${p.fecha}.xml`;
+        a.click(); URL.revokeObjectURL(a.href);
+      }, i * 300);
+    });
+  }
+}
+
+// Guardar parte en hoja Partes de Google Sheets como backup
+async function logParteEnSheets(parte) {
+  const url = getSheetsUrl();
+  if (!url) return;
+  try {
+    await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'text/plain' },
+      body: JSON.stringify({
+        action: 'saveParte',
+        parte: {
+          num:        parte.num,
+          fecha:      parte.fecha,
+          viajeros:   parte.viajeros,
+          generadoEn: parte.generadoEn,
+          xml:        parte.xml
+        }
+      })
+    });
+  } catch(e) { /* silencioso — no crítico */ }
+}
+
+
 
 function editarParte(id) {
   const p = (DB.partesHistorial||[]).find(x => x.id === id);
@@ -4208,6 +4279,19 @@ document.addEventListener('DOMContentLoaded',function(){
     });
   });
 });
+
+// Sync al cerrar/cambiar pestaña — usa sendBeacon para que no se cancele
+window.addEventListener('visibilitychange', function() {
+  if (document.visibilityState === 'hidden') {
+    const url = getSheetsUrl();
+    if (!url || !DB) return;
+    const body = JSON.stringify({ action: 'save', data: DB });
+    navigator.sendBeacon
+      ? navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }))
+      : fetch(url, { method: 'POST', headers: { 'Content-Type': 'text/plain' }, body, keepalive: true }).catch(()=>{});
+  }
+});
+
 initApp();
 
 </script>
