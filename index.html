@@ -1788,11 +1788,7 @@ function renderPlanning() {
             // Name banner cell: floating label spans remaining stay days
             const labelW = Math.max(nameCellSpan * 34 - 6, 30);
             // Entrada day: paint right half only (left half = previous guest checkout)
-            const entraCellBg = isFirst && isLast
-              ? `linear-gradient(to right, transparent 50%, ${bg} 50%)`  // 1 noche: entra y sale mismo día visual
-              : isFirst ? `linear-gradient(to right, transparent 50%, ${bg} 50%)`
-              : isLast  ? `linear-gradient(to right, ${bg}dd 50%, transparent 50%)`
-              : bg;
+            const entraCellBg = isFirst ? `linear-gradient(to right, transparent 50%, ${bg} 50%)` : bg;
             html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
               style="background:${entraCellBg};padding:0;overflow:visible;position:relative;z-index:3;${bsk}" title="${tooltip}">
               <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
@@ -1806,19 +1802,27 @@ function renderPlanning() {
               </div>
             </td>`;
           } else {
-            // Remaining days: colored background only
-            // Last day = checkout: paint only left half, right half is free for new reservation
-            const dayBg = isLast
-              ? `linear-gradient(to right, ${bg}dd 50%, transparent 50%)`
-              : bg + (isWEk ? 'dd' : 'ee');
-            const dayClick = isLast
-              ? `openNewReservaOnDay('${apt.num}','${dsk}')`
-              : `editReserva('${startRes.id}')`;
-            html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="${dayClick}"
+            // Remaining days: solid color
+            const dayBg = bg + (isWEk ? 'dd' : 'ee');
+            html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
               style="background:${dayBg};padding:0;${bsk}" title="${tooltip}"></td>`;
           }
         }
-        i += stayDays;
+        // Celda de salida (checkout): mitad izquierda = color reserva, mitad derecha = libre
+        const salidaDay = startRes.salida;
+        const salidaInSeason = salidaDay >= firstSeasonDay && salidaDay <= lastSeasonDay;
+        if (salidaInSeason) {
+          const salidaDt = new Date(salidaDay + 'T12:00:00');
+          const salidaIsWE = salidaDt.getDay() === 0 || salidaDt.getDay() === 6;
+          const salidaIsToday = salidaDay === today;
+          const salidaIsMStart = salidaDt.getDate() === 1;
+          const salidaBsk = salidaIsMStart ? 'border-left:2px solid var(--border2);' : '';
+          html += `<td class="pg-cell${salidaIsToday?' today':''}" onclick="openNewReservaOnDay('${apt.num}','${salidaDay}')"
+            style="background:linear-gradient(to right, ${bg}cc 50%, transparent 50%);padding:0;${salidaBsk}" title="Salida: ${tooltip}"></td>`;
+          i += stayDays + 1; // saltar también la celda de salida
+        } else {
+          i += stayDays;
+        }
       } else {
         // Free day
         html += `<td class="pg-cell${isWeekend?' weekend':''}${isToday2?' today':''}"
