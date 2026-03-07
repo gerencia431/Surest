@@ -1318,7 +1318,41 @@ const CANAL_BADGE   = {
 // ==========================================================
 // PERSISTENCE + GOOGLE SHEETS SYNC
 // ==========================================================
+function pushHistory() {
+  // Guardar snapshot antes de modificar (máx 20)
+  const hist = JSON.parse(localStorage.getItem('surestHistory') || '[]');
+  hist.push({ ts: Date.now(), data: JSON.stringify(DB) });
+  if (hist.length > 20) hist.shift();
+  localStorage.setItem('surestHistory', JSON.stringify(hist));
+  updateUndoBtn();
+}
+
+function undoDB() {
+  const hist = JSON.parse(localStorage.getItem('surestHistory') || '[]');
+  if (!hist.length) return;
+  const last = hist.pop();
+  localStorage.setItem('surestHistory', JSON.stringify(hist));
+  DB = JSON.parse(last.data);
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
+  updateSidebar();
+  renderAll();
+  updateUndoBtn();
+  // Sincronizar estado restaurado a Sheets para que no lo machaque al recargar
+  if (DB.config && DB.config.sheetsUrl) syncToSheets(true);
+  const ago = Math.round((Date.now() - last.ts) / 1000);
+  toast(`↩ Restaurado y sincronizado (hace ${ago < 60 ? ago+'s' : Math.round(ago/60)+'min'})`);
+}
+
+function updateUndoBtn() {
+  const btn = document.getElementById('undo-btn');
+  if (!btn) return;
+  const hist = JSON.parse(localStorage.getItem('surestHistory') || '[]');
+  btn.disabled = hist.length === 0;
+  btn.title = hist.length ? `Deshacer (${hist.length} cambios guardados)` : 'Sin cambios para deshacer';
+}
+
 function saveDB() {
+  pushHistory();
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
   updateSidebar();
   // Sync a Sheets — debounce de 500ms para agrupar llamadas en cascada
