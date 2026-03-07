@@ -1281,10 +1281,11 @@ const CANAL_BADGE   = {
 function saveDB() {
   localStorage.setItem(STORAGE_KEY, JSON.stringify(DB));
   updateSidebar();
-  // Auto-sync a Sheets 3s después de cada cambio
+  // Sync a Sheets — debounce de 500ms para agrupar llamadas en cascada
+  // pero sin retraso perceptible para el usuario
   if (DB.config && DB.config.sheetsUrl) {
     clearTimeout(window._sheetsSyncTimer);
-    window._sheetsSyncTimer = setTimeout(() => syncToSheets(true), 3000);
+    window._sheetsSyncTimer = setTimeout(() => syncToSheets(true), 500);
   }
 }
 
@@ -1434,6 +1435,7 @@ function checkSheetsOnLoad() {
           renderConfig();
           const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
           setSheetsStatus('✓ Actualizado desde Sheets ' + ts, 'var(--green)');
+          toast('↓ Datos actualizados desde Sheets');
         }
       } else {
         // Sheets vacío — subir local
@@ -2049,7 +2051,7 @@ function previewFactura(id) {
   </div>`;
 
   document.getElementById('modal-factura').classList.add('open');
-  r.facturaGenerada = true; saveDB();
+  r.facturaGenerada = true; saveDB(); syncToSheets(true);
 }
 
 function printInvoice() {
@@ -2237,7 +2239,7 @@ function eliminarParte(id) {
   if (!p) return;
   if (!confirm(`¿Eliminar Parte #${String(p.num).padStart(4,'0')} del ${fmtDate(p.fecha)}? Esta acción no se puede deshacer.`)) return;
   DB.partesHistorial = DB.partesHistorial.filter(x => x.id !== id);
-  saveDB(); renderPartesHistorial();
+  saveDB(); syncToSheets(true); renderPartesHistorial();
   toast('✓ Parte eliminado');
 }
 
@@ -2341,7 +2343,7 @@ function guardarEdicionParte(id) {
   if (!p) return;
   p.xml = xmlFixed;
   p.editadoEn = new Date().toISOString();
-  saveDB(); renderPartesHistorial();
+  saveDB(); syncToSheets(true); renderPartesHistorial();
   document.getElementById('modal-editar-parte').remove();
   toast('✓ Parte actualizado — vuelve a descargarlo');
 }
@@ -2442,7 +2444,7 @@ function cambiarPassword() {
   if (!nueva || nueva.length < 6) { toast('⚠ La contraseña debe tener mínimo 6 caracteres'); return; }
   if (nueva !== conf) { toast('⚠ Las contraseñas no coinciden'); return; }
   DB.config.password = nueva;
-  saveDB();
+  saveDB(); syncToSheets(true);
   document.getElementById('cfg-pwd-nueva').value = '';
   document.getElementById('cfg-pwd-conf').value = '';
   toast('✓ Contraseña actualizada correctamente');
@@ -2698,6 +2700,7 @@ function saveReserva() {
     toast('✓ Reserva creada — Apt. ' + apt);
   }
   saveDB();
+  syncToSheets(true);
   closeModalReservaForce();
   renderPlanning();
 }
@@ -2811,7 +2814,7 @@ function editTarifa(i) {
 function deleteTarifa(i) {
   if (!confirm('¿Eliminar este período de tarifa?')) return;
   DB.periodosTarifa.splice(i, 1);
-  saveDB(); renderTarifas(); toast('✓ Período eliminado');
+  saveDB(); syncToSheets(true); renderTarifas(); toast('✓ Período eliminado');
 }
 function showTarifaModal(p) {
   const exist = document.getElementById('modal-tarifa');
@@ -2875,7 +2878,7 @@ function saveTarifa() {
   const obj = { nombre, desde, hasta, precioDoble, precioIndividual: precioIndividual || precioDoble, notas: document.getElementById('tf-notas').value };
   if (_editingTarifaIdx !== null) DB.periodosTarifa[_editingTarifaIdx] = obj;
   else DB.periodosTarifa.push(obj);
-  saveDB(); document.getElementById('modal-tarifa').remove();
+  saveDB(); syncToSheets(true); document.getElementById('modal-tarifa').remove();
   renderTarifas(); toast('✓ Período guardado');
 }
 
@@ -3932,6 +3935,10 @@ function initApp() {
   renderAll();
   renderConfig();
   setTimeout(checkSheetsOnLoad, 300);
+  // Poll cada 30s — detecta cambios hechos en otro dispositivo/navegador
+  setInterval(() => {
+    if (document.visibilityState === 'visible') checkSheetsOnLoad();
+  }, 30000);
 }
 
 // ==========================================================
