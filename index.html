@@ -1030,7 +1030,7 @@ table.data-table { width: 100%; border-collapse: collapse; }
             <div style="font-size:11px;color:var(--stone);margin-top:3px">Necesaria para generar los links de registro de viajeros correctamente</div>
           </div>
           <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-            <button class="btn btn-primary btn-sm" onclick="saveConfig();checkSheetsOnLoad()">Guardar y probar</button>
+            <button class="btn btn-primary btn-sm" onclick="saveConfig().then(()=>checkSheetsOnLoad())">Guardar y probar</button>
             <button class="btn btn-outline btn-sm" onclick="syncToSheets()">⬆ Subir datos</button>
             <button class="btn btn-outline btn-sm" onclick="syncFromSheets()">⬇ Cargar desde Sheets</button>
             <span id="sheets-status" style="font-size:12px;color:var(--stone)"></span>
@@ -1297,18 +1297,6 @@ function loadDB() {
     if (!DB.partesHistorial) DB.partesHistorial = [];
     if (!DB.config.aptCodigos) DB.config.aptCodigos = {};
     if (!DB.config.aptWifi)    DB.config.aptWifi = {};
-    // Defaults códigos caja llaves
-    const DEFAULT_CODIGOS = {1:'2601',2:'2602',3:'2603',4:'2604',5:'2605',6:'2606',7:'2607',8:'2608'};
-    const DEFAULT_WIFI    = {1:'SUREST / 01181',2:'SUREST / 01282',3:'SUREST / 01383',4:'SUREST / 01484',5:'SUREST / 01585',6:'SUREST / 01686',7:'SUREST / 01787',8:'SUREST / 01888'};
-    Object.keys(DEFAULT_CODIGOS).forEach(k => { if (!DB.config.aptCodigos[k]) DB.config.aptCodigos[k] = DEFAULT_CODIGOS[k]; });
-    Object.keys(DEFAULT_WIFI).forEach(k =>    { if (!DB.config.aptWifi[k])    DB.config.aptWifi[k]    = DEFAULT_WIFI[k]; });
-    // Defaults enlaces reseñas
-    if (!DB.config.urlReseñaGoogle)  DB.config.urlReseñaGoogle  = 'https://www.google.com/maps/place/Apartamentos+Surest/@40.0027058,3.8117651,192m/data=!3m1!1e3!4m8!3m7!1s0x12be06b2fd0e6b5f:0x4c0f0d36bf1bdafe!8m2!3d40.0027058!4d3.8121418!9m1!1b1!16s%2Fg%2F11fmlj551v?entry=ttu&g_ep=EgoyMDI2MDMwNC4xIKXMDSoASAFQAw%3D%3D';
-    if (!DB.config.urlReseñaBooking) DB.config.urlReseñaBooking = 'https://www.booking.com/hotel/es/apartamentos-surest.es.html';
-    // Defaults en emailConfig (los que usan los emails)
-    if (!DB.config.emailConfig) DB.config.emailConfig = {};
-    if (!DB.config.emailConfig.linkGoogle)  DB.config.emailConfig.linkGoogle  = 'https://www.google.com/maps/place/Apartamentos+Surest/@40.0027058,3.8117651,192m/data=!3m1!1e3!4m8!3m7!1s0x12be06b2fd0e6b5f:0x4c0f0d36bf1bdafe!8m2!3d40.0027058!4d3.8121418!9m1!1b1!16s%2Fg%2F11fmlj551v?entry=ttu&g_ep=EgoyMDI2MDMwNC4xIKXMDSoASAFQAw%3D%3D';
-    if (!DB.config.emailConfig.linkBooking) DB.config.emailConfig.linkBooking = 'https://www.booking.com/hotel/es/apartamentos-surest.es.html';
   }
 }
 
@@ -1414,9 +1402,6 @@ async function syncFromSheets() {
 function checkSheetsOnLoad() {
   const url = getSheetsUrl();
   if (!url) return;
-
-  // Auto-sync from Sheets on every load if URL is configured
-  // Shows a small loading indicator, doesn't interrupt the UI
   setSheetsStatus('Sincronizando con Sheets...', 'var(--stone)');
   fetch(url, {
     method: 'POST',
@@ -1426,44 +1411,43 @@ function checkSheetsOnLoad() {
     .then(r => r.json())
     .then(d => {
       if (d.ok && d.data) {
-        // Merge: take everything from Sheets, but keep local-only settings
-        const keepLocal = {
-          sheetsUrl:   DB.config.sheetsUrl,
-          password:    DB.config.password,
-          appBaseUrl:  DB.config.appBaseUrl,
-          aptCodigos:  DB.config.aptCodigos,
-          aptWifi:     DB.config.aptWifi,
-        };
-        DB = d.data;
-        if (keepLocal.sheetsUrl)  DB.config.sheetsUrl  = keepLocal.sheetsUrl;
-        if (keepLocal.password)   DB.config.password   = keepLocal.password;
-        if (keepLocal.appBaseUrl) DB.config.appBaseUrl = keepLocal.appBaseUrl;
-        // Merge aptCodigos y aptWifi: local tiene prioridad (el usuario los edita aquí)
-        // Solo usamos Sheets si local está vacío para ese apartamento
-        const sheetsCodigos = (d.data.config && d.data.config.aptCodigos) || {};
-        const sheetsWifi    = (d.data.config && d.data.config.aptWifi)    || {};
-        const localCodigos  = keepLocal.aptCodigos || {};
-        const localWifi     = keepLocal.aptWifi    || {};
-        // Fusionar: local prevalece sobre Sheets
-        const mergedCodigos = Object.assign({}, sheetsCodigos, localCodigos);
-        const mergedWifi    = Object.assign({}, sheetsWifi,    localWifi);
-        DB.config.aptCodigos = mergedCodigos;
-        DB.config.aptWifi    = mergedWifi;
-        saveDB();
-        renderAll();
-        renderConfig();
-        const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
-        setSheetsStatus('✓ Sincronizado a las ' + ts, 'var(--green)');
+        const sheetsData  = d.data;
+        const localTs     = DB.config._lastSync     || DB.config._configSavedAt || '0';
+        const sheetsTs    = sheetsData.config._lastSync || sheetsData.config._configSavedAt || '0';
+        // El más reciente gana — si local es igual o más nuevo, subimos; si Sheets es más nuevo, descargamos
+        if (localTs >= sheetsTs) {
+          // Local más reciente — subir a Sheets para que otros dispositivos tengan lo último
+          syncToSheets(true);
+          const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+          setSheetsStatus('✓ Sync ' + ts, 'var(--green)');
+        } else {
+          // Sheets más reciente — cargar, pero preservar credenciales locales
+          const sheetsUrl  = DB.config.sheetsUrl;
+          const password   = DB.config.password;
+          const appBaseUrl = DB.config.appBaseUrl;
+          DB = sheetsData;
+          if (sheetsUrl)  DB.config.sheetsUrl  = sheetsUrl;
+          if (password)   DB.config.password   = password;
+          if (appBaseUrl) DB.config.appBaseUrl = appBaseUrl;
+          saveDB();
+          renderAll();
+          renderConfig();
+          const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+          setSheetsStatus('✓ Actualizado desde Sheets ' + ts, 'var(--green)');
+        }
       } else {
+        // Sheets vacío — subir local
+        syncToSheets(true);
         const ts = DB.config._lastSync ? new Date(DB.config._lastSync).toLocaleString('es-ES') : '—';
-        setSheetsStatus('Último sync: ' + ts, 'var(--stone)');
+        setSheetsStatus('Local → Sheets (' + ts + ')', 'var(--stone)');
       }
     })
     .catch(() => {
       const ts = DB.config._lastSync ? new Date(DB.config._lastSync).toLocaleString('es-ES') : '—';
-      setSheetsStatus('Sin conexión — datos locales (' + ts + ')', 'var(--amber)');
+      setSheetsStatus('Sin conexión — local (' + ts + ')', 'var(--amber)');
     });
 }
+
 function exportData() {
   const blob = new Blob([JSON.stringify(DB, null, 2)], { type: 'application/json' });
   const a = document.createElement('a');
@@ -2420,7 +2404,7 @@ function renderConfig() {
   ).join('');
 }
 
-function saveConfig() {
+async function saveConfig() {
   DB.config.nombre = document.getElementById('cfg-nombre').value;
   const suEl2 = document.getElementById('cfg-sheets-url');
   if (suEl2) DB.config.sheetsUrl = suEl2.value.trim();
@@ -2446,9 +2430,10 @@ function saveConfig() {
     const elw = document.getElementById('apt-wifi-' + a.num);
     if (elw) DB.config.aptWifi[a.num] = elw.value;
   });
+  DB.config._configSavedAt = new Date().toISOString();
   saveDB();
-  syncToSheets(true); // subir inmediatamente sin esperar el debounce
-  toast('✓ Configuración guardada');
+  await syncToSheets(true);
+  toast('✓ Configuración guardada y subida a Sheets');
 }
 
 function cambiarPassword() {
@@ -3839,8 +3824,8 @@ function renderEmailsConfig() {
   set('cfg-email-actividades', ec.actividades || '');
   set('cfg-email-apt-info',    ec.aptInfo     || '');
   set('cfg-email-emergencias', ec.emergencias || '');
-  set('cfg-link-booking',      ec.linkBooking || DB.config.emailConfig.linkBooking || 'https://www.booking.com/hotel/es/apartamentos-surest.es.html');
-  set('cfg-link-google',       ec.linkGoogle  || DB.config.emailConfig.linkGoogle  || 'https://www.google.com/maps/place/Apartamentos+Surest/@40.0027058,3.8117651,192m/data=!3m1!1e3!4m8!3m7!1s0x12be06b2fd0e6b5f:0x4c0f0d36bf1bdafe!8m2!3d40.0027058!4d3.8121418!9m1!1b1!16s%2Fg%2F11fmlj551v');
+  set('cfg-link-booking',      ec.linkBooking || '');
+  set('cfg-link-google',       ec.linkGoogle  || '');
   set('cfg-link-airbnb',       ec.linkAirbnb  || '');
   // Always show template content - use saved version if exists, else default
   const _firma = ec.firma || 'Un abrazo,\nMª Ángeles\nApartamentos Surest · Ciutadella, Menorca\n📞 630 531 275';
@@ -3871,7 +3856,7 @@ function renderEmailsConfig() {
   });
 }
 
-function saveEmailsConfig() {
+async function saveEmailsConfig() {
   const get = (id) => { const el = document.getElementById(id); return el ? el.value : ''; };
   if (!DB.config.emailConfig) DB.config.emailConfig = {};
   DB.config.emailConfig = {
@@ -3900,8 +3885,10 @@ function saveEmailsConfig() {
     tplRecordatorioCuerpo:    get('tpl-recordatorio-cuerpo'),
   };
   DB.config.infoWifi = DB.config.emailConfig.wifi;
+  DB.config._configSavedAt = new Date().toISOString();
   saveDB();
-  toast('✓ Plantillas de email guardadas');
+  await syncToSheets(true);
+  toast('✓ Plantillas guardadas y subidas a Sheets');
 }
 
 // ==========================================================
