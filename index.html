@@ -1808,18 +1808,74 @@ function renderPlanning() {
               style="background:${dayBg};padding:0;${bsk}" title="${tooltip}"></td>`;
           }
         }
-        // Celda de salida (checkout): mitad izquierda = color reserva, mitad derecha = libre
+        // Celda de salida / transición
         const salidaDay = startRes.salida;
+        const nextRes = aptRes.find(r => r.id !== startRes.id && r.entrada === salidaDay && r.estado !== 'cancelada');
         const salidaInSeason = salidaDay >= firstSeasonDay && salidaDay <= lastSeasonDay;
         if (salidaInSeason) {
           const salidaDt = new Date(salidaDay + 'T12:00:00');
-          const salidaIsWE = salidaDt.getDay() === 0 || salidaDt.getDay() === 6;
           const salidaIsToday = salidaDay === today;
           const salidaIsMStart = salidaDt.getDate() === 1;
           const salidaBsk = salidaIsMStart ? 'border-left:2px solid var(--border2);' : '';
-          html += `<td class="pg-cell${salidaIsToday?' today':''}" onclick="openNewReservaOnDay('${apt.num}','${salidaDay}')"
-            style="background:linear-gradient(to right, ${bg}cc 50%, transparent 50%);padding:0;${salidaBsk}" title="Salida: ${tooltip}"></td>`;
-          i += stayDays + 1; // saltar también la celda de salida
+          if (nextRes) {
+            // Transición: mitad izq = color reserva saliente, mitad der = color reserva entrante
+            const CANAL_BG2 = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
+            const bgNext = CANAL_BG2[nextRes.canal] || CANAL_BG2.directo;
+            const guestNext = nextRes.huespedes && nextRes.huespedes[0];
+            const nameNext = guestNext ? (guestNext.nombre+' '+(guestNext.apellidos||'')).trim() : 'Apt. '+nextRes.apt;
+            html += `<td class="pg-cell" onclick="editReserva('${startRes.id}')"
+              style="background:linear-gradient(to right, ${bg}ee 50%, ${bgNext}ee 50%);padding:0;${salidaBsk}"
+              title="↑ Salida: ${name} · ↓ Entrada: ${nameNext}"></td>`;
+            // Marcar nextRes como ya iniciado para que no emita su propia celda de entrada
+            shownRes.add(nextRes.id);
+            // Calcular stayDays de nextRes y emitir sus celdas
+            let nextStayDays = 0;
+            const nextStart = i + stayDays + 1;
+            for (let j = nextStart; j < seasonDays.length; j++) {
+              if (seasonDays[j].date >= nextRes.salida) break;
+              nextStayDays++;
+            }
+            const CANAL_BGx = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
+            const bgx = CANAL_BGx[nextRes.canal] || CANAL_BGx.directo;
+            const noches2 = diffDays(nextRes.entrada, nextRes.salida);
+            const totals2 = calcTotalReserva(nextRes);
+            const ci2 = (CANAL_BADGE[nextRes.canal]||CANAL_BADGE.directo).icon;
+            const tooltip2 = ci2+' '+nameNext+' · '+noches2+'n · '+eur(totals2.total);
+            const labelW2 = Math.max(nextStayDays * 34 - 6, 30);
+            if (nextStayDays > 0) {
+              // Primera celda de nextRes con nombre
+              const dk2 = seasonDays[nextStart];
+              const isMStart2 = dk2 ? dk2.day === 1 : false;
+              const bsk2 = isMStart2 ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
+              html += `<td class="pg-cell pg-cell-stay" onclick="editReserva('${nextRes.id}')"
+                style="background:${bgx};padding:0;overflow:visible;position:relative;z-index:3;${bsk2}" title="${tooltip2}">
+                <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
+                  width:${labelW2}px;border-radius:3px;
+                  display:flex;align-items:center;gap:3px;padding:0 6px;
+                  color:#fff;white-space:nowrap;overflow:hidden;pointer-events:none;
+                  background:${bgx};box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+                  <span style="font-size:9px;flex-shrink:0;opacity:0.85">${ci2}</span>
+                  <span style="font-size:10px;font-weight:600;overflow:hidden;text-overflow:ellipsis;flex:1;letter-spacing:0.2px">${nameNext}</span>
+                  <span style="font-size:9px;opacity:0.65;flex-shrink:0;margin-left:2px">${noches2}n</span>
+                </div>
+              </td>`;
+              for (let k2 = 1; k2 < nextStayDays; k2++) {
+                const dk2k = seasonDays[nextStart + k2];
+                const isWE2 = new Date(dk2k.date+'T12:00:00').getDay() % 6 === 0;
+                const isMStart2k = dk2k.day === 1;
+                const bsk2k = isMStart2k ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
+                html += `<td class="pg-cell pg-cell-stay" onclick="editReserva('${nextRes.id}')"
+                  style="background:${bgx+(isWE2?'dd':'ee')};padding:0;${bsk2k}" title="${tooltip2}"></td>`;
+              }
+            }
+            i += stayDays + 1 + nextStayDays;
+          } else {
+            // Salida libre: mitad izq color, mitad der transparente → clickeable para nueva reserva
+            html += `<td class="pg-cell${salidaIsToday?' today':''}" onclick="openNewReservaOnDay('${apt.num}','${salidaDay}')"
+              style="background:linear-gradient(to right, ${bg}cc 50%, transparent 50%);padding:0;${salidaBsk}"
+              title="Salida · Clic para nueva reserva"></td>`;
+            i += stayDays + 1;
+          }
         } else {
           i += stayDays;
         }
