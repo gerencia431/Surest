@@ -1353,6 +1353,7 @@ async function syncToSheets(silent) {
   const url = getSheetsUrl();
   if (!url) { if (!silent) toast('Configura la URL del script en Ajustes'); return; }
   if (!silent) setSheetsStatus('Subiendo...', 'var(--stone)');
+  window._syncingToSheets = true;
   try {
     const r = await fetch(url, {
       method: 'POST',
@@ -1373,6 +1374,8 @@ async function syncToSheets(silent) {
   } catch(err) {
     setSheetsStatus('Sin conexion', 'var(--red)');
     if (!silent) { sheetsLog('Error de red: ' + err.message, true); toast('Error de conexion'); }
+  } finally {
+    window._syncingToSheets = false;
   }
 }
 
@@ -3934,7 +3937,11 @@ function initApp() {
   setTimeout(checkSheetsOnLoad, 300);
   // Poll cada 30s — detecta cambios hechos en otro dispositivo/navegador
   setInterval(() => {
-    if (document.visibilityState === 'visible') checkSheetsOnLoad();
+    if (document.visibilityState === 'visible') {
+      // No sincronizar si hay un modal abierto (el usuario podría estar editando)
+      const modalAbierto = document.querySelector('.modal-overlay.open, [id^="modal-"].open, #modal-tarifa, #modal-reserva.open');
+      if (!modalAbierto && !window._syncingToSheets) checkSheetsOnLoad();
+    }
   }, 30000);
 }
 
@@ -3943,6 +3950,11 @@ function initApp() {
 // ==========================================================
 function renderAll() {
   renderPlanning();
+  // Refrescar panel activo si está visible
+  const activePanel = document.querySelector('.panel[style*="display: block"], .panel[style*="display:block"]');
+  if (document.getElementById('panel-tarifas') && document.getElementById('panel-tarifas').style.display !== 'none') renderTarifas();
+  if (document.getElementById('panel-reservas') && document.getElementById('panel-reservas').style.display !== 'none') { renderReservasStats(); renderReservasTable(); }
+  if (document.getElementById('panel-limpiezas') && document.getElementById('panel-limpiezas').style.display !== 'none') renderLimpiezas();
 }
 
 function autoFillEmailTemplates() {
