@@ -1760,7 +1760,8 @@ function renderPlanning() {
         // Solid bg colors per canal
         const CANAL_BG = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
         const bg = CANAL_BG[canalKey] || CANAL_BG.directo;
-        const hasOverlap = aptRes.some(r => r.id !== startRes.id && r.salida === startRes.entrada);
+        // Solapamiento real: otra reserva cuyas fechas se PISAN con esta (no meramente consecutivas)
+        const hasOverlap = aptRes.some(r => r.id !== startRes.id && r.estado !== 'cancelada' && r.entrada < startRes.salida && r.salida > startRes.entrada && r.entrada !== startRes.salida && r.salida !== startRes.entrada);
         const tooltip = `${ci} ${name} · ${noches}n · ${eur(totals.total)}${hasOverlap?' ⚠ SOLAPE':''}`;
 
         // Emit one td per day of the stay — each gets the canal bg color
