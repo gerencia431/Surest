@@ -1821,21 +1821,17 @@ function renderPlanning() {
           const salidaIsMStart = salidaDt.getDate() === 1;
           const salidaBsk = salidaIsMStart ? 'border-left:2px solid var(--border2);' : '';
           if (nextConsec) {
-            // Reserva consecutiva: celda partida izq=saliente, der=entrante
-            const CBGN = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
-            const bgN = CBGN[nextConsec.canal] || CBGN.directo;
-            const gN = nextConsec.huespedes && nextConsec.huespedes[0];
-            const nameN = gN ? (gN.nombre+' '+(gN.apellidos||'')).trim() : 'Apt.'+nextConsec.apt;
-            html += `<td class="pg-cell" onclick="editReserva('${startRes.id}')"
-              style="background:linear-gradient(to right,${bg}ee 50%,${bgN}ee 50%);padding:0;${salidaBsk}"
-              title="↑ Salida: ${name} · ↓ Entrada: ${nameN}"></td>`;
+            // Reserva consecutiva: la celda de transición la pinta la reserva ENTRANTE
+            // con su gradiente transparent→color. Solo avanzamos stayDays (sin +1)
+            // para que el while llegue al día de salida/entrada y lo pinte normalmente.
+            i += stayDays;
           } else {
             // Sin reserva entrante: mitad izq=color checkout, mitad der=libre (click nueva reserva)
             html += `<td class="pg-cell${salidaIsToday?' today':''}" onclick="openNewReservaOnDay('${apt.num}','${salidaDay}')"
               style="background:linear-gradient(to right,${bg}cc 50%,transparent 50%);padding:0;${salidaBsk}"
               title="Salida · Clic para nueva reserva"></td>`;
+            i += stayDays + 1;
           }
-          i += stayDays + 1;
         } else {
           i += stayDays;
         }
