@@ -1421,36 +1421,24 @@ function checkSheetsOnLoad() {
     .then(r => r.json())
     .then(d => {
       if (d.ok && d.data) {
-        const sheetsData  = d.data;
-        const localTs     = DB.config._lastSync     || DB.config._configSavedAt || '0';
-        const sheetsTs    = sheetsData.config._lastSync || sheetsData.config._configSavedAt || '0';
-        // El más reciente gana — si local es igual o más nuevo, subimos; si Sheets es más nuevo, descargamos
-        if (localTs >= sheetsTs) {
-          // Local más reciente — subir a Sheets para que otros dispositivos tengan lo último
-          syncToSheets(true);
-          const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
-          setSheetsStatus('✓ Sync ' + ts, 'var(--green)');
-        } else {
-          // Sheets más reciente — cargar, pero preservar credenciales locales
-          const sheetsUrl  = DB.config.sheetsUrl;
-          const password   = DB.config.password;
-          const appBaseUrl = DB.config.appBaseUrl;
-          DB = sheetsData;
-          if (sheetsUrl)  DB.config.sheetsUrl  = sheetsUrl;
-          if (password)   DB.config.password   = password;
-          if (appBaseUrl) DB.config.appBaseUrl = appBaseUrl;
-          saveDB();
-          renderAll();
-          renderConfig();
-          const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
-          setSheetsStatus('✓ Actualizado desde Sheets ' + ts, 'var(--green)');
-          toast('↓ Datos actualizados desde Sheets');
-        }
-      } else {
-        // Sheets vacío — subir local
+        // Sheets es siempre la fuente de verdad — solo preservamos credenciales locales
+        const sheetsUrl  = DB.config.sheetsUrl;
+        const password   = DB.config.password;
+        const appBaseUrl = DB.config.appBaseUrl;
+        const prevSync   = DB.config._lastSync;
+        DB = d.data;
+        if (sheetsUrl)  DB.config.sheetsUrl  = sheetsUrl;
+        if (password)   DB.config.password   = password;
+        if (appBaseUrl) DB.config.appBaseUrl = appBaseUrl;
+        saveDB();
+        renderAll();
+        renderConfig();
+        const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+        setSheetsStatus('✓ Sync ' + ts, 'var(--green)');
+      } else if (!d.data) {
+        // Sheets vacío — subir local para inicializar
         syncToSheets(true);
-        const ts = DB.config._lastSync ? new Date(DB.config._lastSync).toLocaleString('es-ES') : '—';
-        setSheetsStatus('Local → Sheets (' + ts + ')', 'var(--stone)');
+        setSheetsStatus('Datos subidos a Sheets', 'var(--stone)');
       }
     })
     .catch(() => {
