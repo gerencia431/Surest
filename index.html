@@ -1760,11 +1760,18 @@ function renderPlanning() {
         // Solid bg colors per canal
         const CANAL_BG = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
         const bg = CANAL_BG[canalKey] || CANAL_BG.directo;
-        // Solapamiento real: otra reserva cuyas fechas se PISAN con esta (no meramente consecutivas)
-        const hasOverlap = aptRes.some(r => r.id !== startRes.id && r.estado !== 'cancelada' && r.entrada < startRes.salida && r.salida > startRes.entrada && r.entrada !== startRes.salida && r.salida !== startRes.entrada);
+        // Solapamiento real (fechas que se pisan, no consecutivas)
+        const hasOverlap = aptRes.some(r =>
+          r.id !== startRes.id && r.estado !== 'cancelada' &&
+          r.entrada < startRes.salida && r.salida > startRes.entrada &&
+          !(r.entrada === startRes.salida || r.salida === startRes.entrada)
+        );
         const tooltip = `${ci} ${name} · ${noches}n · ${eur(totals.total)}${hasOverlap?' ⚠ SOLAPE':''}`;
 
-        // Emit one td per day of the stay — each gets the canal bg color
+        // ¿Hay reserva que entra el día que esta sale? (consecutiva)
+        const nextConsec = aptRes.find(r => r.id !== startRes.id && r.entrada === startRes.salida && r.estado !== 'cancelada');
+
+        // Pintar días de estancia
         for (let k = 0; k < stayDays; k++) {
           const dk = seasonDays[i + k];
           const dsk = dk.date;
@@ -1774,27 +1781,23 @@ function renderPlanning() {
           const isMStartk = dk.day === 1;
           const bsk = isMStartk ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
           const isFirst = k === 0;
-          const isLast  = k === stayDays - 1;
-          // When there's overlap, k=0 is the ⚡ cell, so the name banner goes on k=1
           const isNameCell = hasOverlap ? k === 1 : k === 0;
-          const nameCellSpan = hasOverlap ? stayDays - 1 : stayDays; // days available for label
+          const nameCellSpan = hasOverlap ? stayDays - 1 : stayDays;
 
-          // Overlap: first day (k=0) gets ⚡ marker + half-paint
           if (isFirst && hasOverlap) {
+            // Solapamiento real: ⚡ en rojo
             html += `<td class="pg-cell pg-cell-stay" onclick="editReserva('${startRes.id}')"
-              style="background:linear-gradient(to right, rgba(220,50,50,0.3) 50%, rgba(220,50,50,0.55) 50%);padding:0;${bsk}" title="⚠ SOLAPE — ${tooltip}">
+              style="background:linear-gradient(to right,rgba(220,50,50,0.3) 50%,rgba(220,50,50,0.55) 50%);padding:0;${bsk}" title="⚠ SOLAPE — ${tooltip}">
               <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:12px;font-weight:700">⚡</div>
             </td>`;
           } else if (isNameCell) {
-            // Name banner cell: floating label spans remaining stay days
             const labelW = Math.max(nameCellSpan * 34 - 6, 30);
-            // Entrada day: paint right half only (left half = previous guest checkout)
+            // Día de entrada: mitad izq transparente (checkout anterior), mitad der = color
             const entraCellBg = isFirst ? `linear-gradient(to right, transparent 50%, ${bg} 50%)` : bg;
             html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
               style="background:${entraCellBg};padding:0;overflow:visible;position:relative;z-index:3;${bsk}" title="${tooltip}">
               <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
-                width:${labelW}px;border-radius:3px;
-                display:flex;align-items:center;gap:3px;padding:0 6px;
+                width:${labelW}px;border-radius:3px;display:flex;align-items:center;gap:3px;padding:0 6px;
                 color:#fff;white-space:nowrap;overflow:hidden;pointer-events:none;
                 background:${bg};box-shadow:0 1px 3px rgba(0,0,0,0.2);">
                 <span style="font-size:9px;flex-shrink:0;opacity:0.85">${ci}</span>
@@ -1803,80 +1806,36 @@ function renderPlanning() {
               </div>
             </td>`;
           } else {
-            // Remaining days: solid color
             const dayBg = bg + (isWEk ? 'dd' : 'ee');
             html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
               style="background:${dayBg};padding:0;${bsk}" title="${tooltip}"></td>`;
           }
         }
-        // Celda de salida / transición
+
+        // Celda del día de salida
         const salidaDay = startRes.salida;
-        const nextRes = aptRes.find(r => r.id !== startRes.id && r.entrada === salidaDay && r.estado !== 'cancelada');
         const salidaInSeason = salidaDay >= firstSeasonDay && salidaDay <= lastSeasonDay;
         if (salidaInSeason) {
           const salidaDt = new Date(salidaDay + 'T12:00:00');
           const salidaIsToday = salidaDay === today;
           const salidaIsMStart = salidaDt.getDate() === 1;
           const salidaBsk = salidaIsMStart ? 'border-left:2px solid var(--border2);' : '';
-          if (nextRes) {
-            // Transición: mitad izq = color reserva saliente, mitad der = color reserva entrante
-            const CANAL_BG2 = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
-            const bgNext = CANAL_BG2[nextRes.canal] || CANAL_BG2.directo;
-            const guestNext = nextRes.huespedes && nextRes.huespedes[0];
-            const nameNext = guestNext ? (guestNext.nombre+' '+(guestNext.apellidos||'')).trim() : 'Apt. '+nextRes.apt;
+          if (nextConsec) {
+            // Reserva consecutiva: celda partida izq=saliente, der=entrante
+            const CBGN = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
+            const bgN = CBGN[nextConsec.canal] || CBGN.directo;
+            const gN = nextConsec.huespedes && nextConsec.huespedes[0];
+            const nameN = gN ? (gN.nombre+' '+(gN.apellidos||'')).trim() : 'Apt.'+nextConsec.apt;
             html += `<td class="pg-cell" onclick="editReserva('${startRes.id}')"
-              style="background:linear-gradient(to right, ${bg}ee 50%, ${bgNext}ee 50%);padding:0;${salidaBsk}"
-              title="↑ Salida: ${name} · ↓ Entrada: ${nameNext}"></td>`;
-            // Marcar nextRes como ya iniciado para que no emita su propia celda de entrada
-            shownRes.add(nextRes.id);
-            // Calcular stayDays de nextRes y emitir sus celdas
-            let nextStayDays = 0;
-            const nextStart = i + stayDays + 1;
-            for (let j = nextStart; j < seasonDays.length; j++) {
-              if (seasonDays[j].date >= nextRes.salida) break;
-              nextStayDays++;
-            }
-            const CANAL_BGx = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
-            const bgx = CANAL_BGx[nextRes.canal] || CANAL_BGx.directo;
-            const noches2 = diffDays(nextRes.entrada, nextRes.salida);
-            const totals2 = calcTotalReserva(nextRes);
-            const ci2 = (CANAL_BADGE[nextRes.canal]||CANAL_BADGE.directo).icon;
-            const tooltip2 = ci2+' '+nameNext+' · '+noches2+'n · '+eur(totals2.total);
-            const labelW2 = Math.max(nextStayDays * 34 - 6, 30);
-            if (nextStayDays > 0) {
-              // Primera celda de nextRes con nombre
-              const dk2 = seasonDays[nextStart];
-              const isMStart2 = dk2 ? dk2.day === 1 : false;
-              const bsk2 = isMStart2 ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
-              html += `<td class="pg-cell pg-cell-stay" onclick="editReserva('${nextRes.id}')"
-                style="background:${bgx};padding:0;overflow:visible;position:relative;z-index:3;${bsk2}" title="${tooltip2}">
-                <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
-                  width:${labelW2}px;border-radius:3px;
-                  display:flex;align-items:center;gap:3px;padding:0 6px;
-                  color:#fff;white-space:nowrap;overflow:hidden;pointer-events:none;
-                  background:${bgx};box-shadow:0 1px 3px rgba(0,0,0,0.2);">
-                  <span style="font-size:9px;flex-shrink:0;opacity:0.85">${ci2}</span>
-                  <span style="font-size:10px;font-weight:600;overflow:hidden;text-overflow:ellipsis;flex:1;letter-spacing:0.2px">${nameNext}</span>
-                  <span style="font-size:9px;opacity:0.65;flex-shrink:0;margin-left:2px">${noches2}n</span>
-                </div>
-              </td>`;
-              for (let k2 = 1; k2 < nextStayDays; k2++) {
-                const dk2k = seasonDays[nextStart + k2];
-                const isWE2 = new Date(dk2k.date+'T12:00:00').getDay() % 6 === 0;
-                const isMStart2k = dk2k.day === 1;
-                const bsk2k = isMStart2k ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
-                html += `<td class="pg-cell pg-cell-stay" onclick="editReserva('${nextRes.id}')"
-                  style="background:${bgx+(isWE2?'dd':'ee')};padding:0;${bsk2k}" title="${tooltip2}"></td>`;
-              }
-            }
-            i += stayDays + 1 + nextStayDays;
+              style="background:linear-gradient(to right,${bg}ee 50%,${bgN}ee 50%);padding:0;${salidaBsk}"
+              title="↑ Salida: ${name} · ↓ Entrada: ${nameN}"></td>`;
           } else {
-            // Salida libre: mitad izq color, mitad der transparente → clickeable para nueva reserva
+            // Sin reserva entrante: mitad izq=color checkout, mitad der=libre (click nueva reserva)
             html += `<td class="pg-cell${salidaIsToday?' today':''}" onclick="openNewReservaOnDay('${apt.num}','${salidaDay}')"
-              style="background:linear-gradient(to right, ${bg}cc 50%, transparent 50%);padding:0;${salidaBsk}"
+              style="background:linear-gradient(to right,${bg}cc 50%,transparent 50%);padding:0;${salidaBsk}"
               title="Salida · Clic para nueva reserva"></td>`;
-            i += stayDays + 1;
           }
+          i += stayDays + 1;
         } else {
           i += stayDays;
         }
