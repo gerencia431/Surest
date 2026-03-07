@@ -513,7 +513,7 @@ table.data-table { width: 100%; border-collapse: collapse; }
     <div class="topbar">
         <button id="menu-toggle" onclick="toggleSidebar()">&#9776;</button>
         <div class="topbar-title" id="page-title">Planning <span id="page-sub"></span></div>
-      <button class="btn btn-primary" onclick="openNewReserva()">+ Nueva Reserva</button>
+      <button id="undo-btn" onclick="undoDB()" disabled title="Sin cambios para deshacer" style="margin-right:8px;padding:8px 14px;border:1px solid var(--border);border-radius:8px;background:var(--sand);color:var(--stone);cursor:pointer;font-size:13px">↩ Deshacer</button><button class="btn btn-primary" onclick="openNewReserva()">+ Nueva Reserva</button>
     </div>
     <div class="content">
 
