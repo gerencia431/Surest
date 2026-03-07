@@ -1807,8 +1807,19 @@ function renderPlanning() {
             } else {
               entraCellBg = bg;
             }
-            html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
-              style="background:${entraCellBg};padding:0;overflow:visible;position:relative;z-index:3;${bsk}" title="${tooltip}">
+            const prevRes = isFirst ? aptRes.find(r => r.id !== startRes.id && r.salida === startRes.entrada && r.estado !== 'cancelada') : null;
+            if (isFirst && prevRes) {
+              // Día de transición: celda roja con icono ⬆⬇
+              const gP = prevRes.huespedes && prevRes.huespedes[0];
+              const nameP = gP ? (gP.nombre+' '+(gP.apellidos||'')).trim() : 'Apt.'+prevRes.apt;
+              html += `<td class="pg-cell" onclick="editReserva('${startRes.id}')"
+                style="background:rgba(220,50,50,0.85);padding:0;position:relative;z-index:4;${bsk}"
+                title="⬆ Sale: ${nameP} · ⬇ Entra: ${name}">
+                <div style="height:100%;display:flex;align-items:center;justify-content:center;color:#fff;font-size:10px;font-weight:700;letter-spacing:-1px">⬆⬇</div>
+              </td>`;
+            } else {
+              html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
+                style="background:${entraCellBg};padding:0;overflow:visible;position:relative;z-index:3;${bsk}" title="${tooltip}">
               <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
                 width:${labelW}px;border-radius:3px;display:flex;align-items:center;gap:3px;padding:0 6px;
                 color:#fff;white-space:nowrap;overflow:hidden;pointer-events:none;
@@ -1818,6 +1829,7 @@ function renderPlanning() {
                 <span style="font-size:9px;opacity:0.65;flex-shrink:0;margin-left:2px">${noches}n</span>
               </div>
             </td>`;
+            } // end else (no prevRes)
           } else {
             const dayBg = bg + (isWEk ? 'dd' : 'ee');
             html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
