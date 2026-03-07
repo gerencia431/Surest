@@ -1737,11 +1737,6 @@ function renderPlanning() {
 
       // Find reservation starting today, or one that started before season and this is its first visible day
       let startRes = aptRes.find(r => r.entrada === ds && !shownRes.has(r.id));
-      // Si este día ya fue pintado como celda bicolor de transición:
-      // - si hay reserva que empieza aquí, la procesamos pero sin emitir la celda k=0 (skipFirstCell=true)
-      // - si no hay reserva, saltamos el día
-      const skipFirstCell = skippedDays.has(ds);
-      if (skipFirstCell && !startRes) { i++; continue; }
       if (!startRes) {
         // Reservation started before the season - show from first season day
         startRes = aptRes.find(r => r.entrada < firstSeasonDay && r.salida > ds && i === 0 && !shownRes.has(r.id));
@@ -1787,10 +1782,8 @@ function renderPlanning() {
           const isMStartk = dk.day === 1;
           const bsk = isMStartk ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
           const isFirst = k === 0;
-          // Si skipFirstCell, k=0 ya está pintado como bicolor → saltarlo
-          if (isFirst && skipFirstCell) continue;
-          const isNameCell = hasOverlap ? k === 1 : (skipFirstCell ? k === 1 : k === 0);
-          const nameCellSpan = Math.max((hasOverlap || skipFirstCell) ? stayDays - 1 : stayDays, 1);
+          const isNameCell = hasOverlap ? k === 1 : k === 0;
+          const nameCellSpan = hasOverlap ? stayDays - 1 : stayDays;
 
           if (isFirst && hasOverlap) {
             // Solapamiento real: ⚡ en rojo
@@ -1800,8 +1793,20 @@ function renderPlanning() {
             </td>`;
           } else if (isNameCell) {
             const labelW = Math.max(nameCellSpan * 34 - 6, 30);
-            // Día de entrada: mitad izq transparente (checkout anterior), mitad der = color
-            const entraCellBg = isFirst ? `linear-gradient(to right, transparent 50%, ${bg} 50%)` : bg;
+            // Día de entrada: detectar si hay reserva saliente ese día
+            let entraCellBg;
+            if (isFirst) {
+              const CBGP = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
+              const prevRes = aptRes.find(r => r.id !== startRes.id && r.salida === startRes.entrada && r.estado !== 'cancelada');
+              if (prevRes) {
+                const bgPrev = CBGP[prevRes.canal] || CBGP.directo;
+                entraCellBg = `linear-gradient(to right, ${bgPrev} 50%, ${bg} 50%)`;
+              } else {
+                entraCellBg = `linear-gradient(to right, transparent 50%, ${bg} 50%)`;
+              }
+            } else {
+              entraCellBg = bg;
+            }
             html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
               style="background:${entraCellBg};padding:0;overflow:visible;position:relative;z-index:3;${bsk}" title="${tooltip}">
               <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
@@ -1829,22 +1834,9 @@ function renderPlanning() {
           const salidaIsMStart = salidaDt.getDate() === 1;
           const salidaBsk = salidaIsMStart ? 'border-left:2px solid var(--border2);' : '';
           if (nextConsec) {
-            // Reserva consecutiva: celda bicolor izq=saliente der=entrante
-            const CBGN = { directo:'#4a7a5a', booking:'#003580', airbnb:'#c73c3c', web:'#4a6878' };
-            const bgN = CBGN[nextConsec.canal] || CBGN.directo;
-            const gN = nextConsec.huespedes && nextConsec.huespedes[0];
-            const nameN = gN ? (gN.nombre+' '+(gN.apellidos||'')).trim() : 'Apt.'+nextConsec.apt;
-            html += `<td class="pg-cell" onclick="editReserva('${startRes.id}')"
-              style="background:linear-gradient(to right,${bg}ff 50%,${bgN}ff 50%);padding:0;${salidaBsk}"
-              title="↑ Salida: ${name} · ↓ Entrada: ${nameN}"></td>`;
-            // Marcar este día como ya pintado: la reserva entrante lo verá y usará su gradiente normal
-            // pero la celda ya existe — NO: mejor marcar el día para que el while lo salte
-            // y dejamos que nextConsec se pinte normalmente desde su entrada (que coincide con salidaDay)
-            // PERO pintamos la celda con el bicolor nosotros — así que el while debe saltar salidaDay
-            skippedDays.add(salidaDay);
-            // Avanzar solo los días de esta reserva + la celda bicolor.
-            // El while continuará desde la entrada de nextConsec y la pintará normalmente.
-            i += stayDays + 1;
+            // Reserva consecutiva: NO emitir celda de salida.
+            // La reserva entrante pintará ese día con su celda de entrada bicolor.
+            i += stayDays;
           } else {
             // Sin reserva entrante: mitad izq=color checkout, mitad der=libre (click nueva reserva)
             html += `<td class="pg-cell${salidaIsToday?' today':''}" onclick="openNewReservaOnDay('${apt.num}','${salidaDay}')"
