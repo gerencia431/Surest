@@ -3244,65 +3244,59 @@ function exportLimpiezasPDF() { exportLimpPDF('days', 15); }
 // INFORME DE RESERVAS
 // ==========================================================
 function renderInformeReservas() {
-  const filtro = document.getElementById('inf-res-filtro').value;
+  const filtro    = document.getElementById('inf-res-filtro').value;
   const aptFiltro = document.getElementById('inf-res-apt').value;
   const canalFiltro = document.getElementById('inf-res-canal').value;
   const year = new Date().getFullYear();
 
-  // Mostrar/ocultar controles según filtro
-  const elMes   = document.getElementById('inf-res-mes');
-  const elDesde = document.getElementById('inf-res-desde');
-  const elHasta = document.getElementById('inf-res-hasta');
-  elMes.style.display   = filtro === 'mes'   ? '' : 'none';
-  elDesde.style.display = filtro === 'rango' ? '' : 'none';
-  elHasta.style.display = filtro === 'rango' ? '' : 'none';
+  // Mostrar/ocultar controles
+  document.getElementById('inf-res-mes').style.display   = filtro === 'mes'   ? '' : 'none';
+  document.getElementById('inf-res-desde').style.display = filtro === 'rango' ? '' : 'none';
+  document.getElementById('inf-res-hasta').style.display = filtro === 'rango' ? '' : 'none';
 
-  // Filtrar reservas
+  // Filtrar
   let reservas = DB.reservas.filter(r => r.estado !== 'cancelada');
-  if (aptFiltro) reservas = reservas.filter(r => String(r.apt) === aptFiltro);
-  if (canalFiltro) reservas = reservas.filter(r => r.canal === canalFiltro);
-
+  if (aptFiltro)    reservas = reservas.filter(r => String(r.apt) === aptFiltro);
+  if (canalFiltro)  reservas = reservas.filter(r => r.canal === canalFiltro);
   if (filtro === 'mes') {
     const mes = parseInt(document.getElementById('inf-res-mes').value);
-    reservas = reservas.filter(r => {
-      const m = parseInt(r.entrada.split('-')[1]);
-      return m === mes;
-    });
+    reservas = reservas.filter(r => parseInt(r.entrada.split('-')[1]) === mes);
   } else if (filtro === 'rango') {
     const desde = document.getElementById('inf-res-desde').value;
     const hasta = document.getElementById('inf-res-hasta').value;
-    if (desde) reservas = reservas.filter(r => r.entrada >= desde);
+    if (desde) reservas = reservas.filter(r => r.salida >= desde);
     if (hasta) reservas = reservas.filter(r => r.entrada <= hasta);
   } else {
-    // temporada: año actual
     reservas = reservas.filter(r => r.entrada.startsWith(String(year)));
   }
+  reservas = reservas.slice().sort((a,b) => a.entrada < b.entrada ? -1 : 1);
 
-  // Ordenar por entrada
-  reservas = reservas.slice().sort((a, b) => a.entrada < b.entrada ? -1 : 1);
-
-  // Calcular totales
-  let totalNoches = 0, totalSinIva = 0, totalIva = 0, totalConIva = 0;
+  // Acumulados
+  let totNoches=0, totBase=0, totIva=0, totIts=0, totFianza=0, totTotal=0;
   reservas.forEach(r => {
     const t = calcTotalReserva(r);
-    const noches = diffDays(r.entrada, r.salida);
-    totalNoches += noches;
-    totalSinIva += t.base;
-    totalIva += t.ivaAmt;
-    totalConIva += t.total;
+    totNoches  += t.noches;
+    totBase    += t.base;
+    totIva     += t.iva;
+    totIts     += t.its;
+    totFianza  += t.fianza;
+    totTotal   += t.total;
   });
 
-  // Totales
+  // Resumen superior
   document.getElementById('inf-res-totales').innerHTML = `
     <span><strong>${reservas.length}</strong> reservas</span>
     <span style="color:var(--stone)">·</span>
-    <span><strong>${totalNoches}</strong> noches</span>
+    <span><strong>${totNoches}</strong> noches</span>
     <span style="color:var(--stone)">·</span>
-    <span>Base: <strong>${eur(totalSinIva)}</strong></span>
+    <span>Alojamiento: <strong>${eur(totBase)}</strong></span>
     <span style="color:var(--stone)">·</span>
-    <span>IVA: <strong>${eur(totalIva)}</strong></span>
+    <span>IVA (10%): <strong>${eur(totIva)}</strong></span>
     <span style="color:var(--stone)">·</span>
-    <span style="color:var(--dark);font-weight:700">Total: ${eur(totalConIva)}</span>
+    <span>ITS: <strong>${eur(totIts)}</strong></span>
+    ${totFianza ? `<span style="color:var(--stone)">·</span><span>Fianzas: <strong>${eur(totFianza)}</strong></span>` : ''}
+    <span style="color:var(--stone)">·</span>
+    <span style="font-weight:700;color:var(--dark)">TOTAL: ${eur(totTotal)}</span>
   `;
 
   if (!reservas.length) {
@@ -3310,64 +3304,72 @@ function renderInformeReservas() {
     return;
   }
 
-  // Tabla
-  const CANAL_LABELS = { directo:'Directo', booking:'Booking.com', airbnb:'Airbnb', web:'Web propia' };
-  let html = `<table style="width:100%;border-collapse:collapse">
+  const CANAL = { directo:'Directo', booking:'Booking.com', airbnb:'Airbnb', web:'Web propia' };
+  const fmt = d => { const p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; };
+
+  let html = `<table style="width:100%;border-collapse:collapse;min-width:900px">
     <thead>
-      <tr style="border-bottom:2px solid var(--border2);font-size:11px;letter-spacing:0.5px;color:var(--stone);text-transform:uppercase">
-        <th style="padding:8px 10px;text-align:left;font-weight:600">Entrada</th>
-        <th style="padding:8px 10px;text-align:left;font-weight:600">Salida</th>
-        <th style="padding:8px 10px;text-align:left;font-weight:600">Apt.</th>
-        <th style="padding:8px 10px;text-align:left;font-weight:600">Huésped</th>
-        <th style="padding:8px 10px;text-align:left;font-weight:600">Canal</th>
-        <th style="padding:8px 10px;text-align:right;font-weight:600">Noches</th>
-        <th style="padding:8px 10px;text-align:right;font-weight:600">€/Noche</th>
-        <th style="padding:8px 10px;text-align:right;font-weight:600">Base</th>
-        <th style="padding:8px 10px;text-align:right;font-weight:600">IVA</th>
-        <th style="padding:8px 10px;text-align:right;font-weight:600">Total</th>
+      <tr style="border-bottom:2px solid var(--border2);font-size:10px;letter-spacing:0.5px;color:var(--stone);text-transform:uppercase;background:var(--sand2)">
+        <th style="padding:9px 8px;text-align:left">Entrada</th>
+        <th style="padding:9px 8px;text-align:left">Salida</th>
+        <th style="padding:9px 8px;text-align:left">Apt.</th>
+        <th style="padding:9px 8px;text-align:left">Huésped principal</th>
+        <th style="padding:9px 8px;text-align:left">Canal</th>
+        <th style="padding:9px 8px;text-align:center">Adultos</th>
+        <th style="padding:9px 8px;text-align:right">Noches</th>
+        <th style="padding:9px 8px;text-align:right">€/Noche</th>
+        <th style="padding:9px 8px;text-align:right">Alojamiento</th>
+        <th style="padding:9px 8px;text-align:right">IVA 10%</th>
+        <th style="padding:9px 8px;text-align:right">ITS</th>
+        <th style="padding:9px 8px;text-align:right">Fianza</th>
+        <th style="padding:9px 8px;text-align:right;font-weight:700">Total</th>
       </tr>
     </thead><tbody>`;
 
   reservas.forEach((r, i) => {
     const t = calcTotalReserva(r);
-    const noches = diffDays(r.entrada, r.salida);
-    const huesped = r.huespedes && r.huespedes[0] ? `${r.huespedes[0].nombre} ${r.huespedes[0].apellidos||''}`.trim() : '—';
-    const fmtDate = d => { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; };
+    const huesped = r.huespedes && r.huespedes[0]
+      ? (r.huespedes[0].nombre + ' ' + (r.huespedes[0].apellidos||'')).trim()
+      : '—';
     const bg = i % 2 === 0 ? 'var(--white)' : 'var(--sand2)';
     html += `<tr style="background:${bg};border-bottom:1px solid var(--border)">
-      <td style="padding:8px 10px">${fmtDate(r.entrada)}</td>
-      <td style="padding:8px 10px">${fmtDate(r.salida)}</td>
-      <td style="padding:8px 10px;font-weight:600">Apt. ${r.apt}</td>
-      <td style="padding:8px 10px">${huesped}</td>
-      <td style="padding:8px 10px;color:var(--stone)">${CANAL_LABELS[r.canal]||r.canal}</td>
-      <td style="padding:8px 10px;text-align:right">${noches}</td>
-      <td style="padding:8px 10px;text-align:right">${eur(r.precioNoche||0)}</td>
-      <td style="padding:8px 10px;text-align:right">${eur(t.base)}</td>
-      <td style="padding:8px 10px;text-align:right;color:var(--stone)">${eur(t.ivaAmt)}</td>
-      <td style="padding:8px 10px;text-align:right;font-weight:600">${eur(t.total)}</td>
+      <td style="padding:8px 8px;white-space:nowrap">${fmt(r.entrada)}</td>
+      <td style="padding:8px 8px;white-space:nowrap">${fmt(r.salida)}</td>
+      <td style="padding:8px 8px;font-weight:600">Apt.${r.apt}</td>
+      <td style="padding:8px 8px">${huesped}</td>
+      <td style="padding:8px 8px;color:var(--stone);font-size:12px">${CANAL[r.canal]||r.canal}</td>
+      <td style="padding:8px 8px;text-align:center">${r.adultos||1}</td>
+      <td style="padding:8px 8px;text-align:right">${t.noches}</td>
+      <td style="padding:8px 8px;text-align:right">${eur(r.precioNoche||0)}</td>
+      <td style="padding:8px 8px;text-align:right">${eur(t.base)}</td>
+      <td style="padding:8px 8px;text-align:right;color:var(--stone)">${eur(t.iva)}</td>
+      <td style="padding:8px 8px;text-align:right;color:var(--stone)">${t.its > 0 ? eur(t.its) : '—'}</td>
+      <td style="padding:8px 8px;text-align:right;color:var(--stone)">${t.fianza > 0 ? eur(t.fianza) : '—'}</td>
+      <td style="padding:8px 8px;text-align:right;font-weight:700">${eur(t.total)}</td>
     </tr>`;
   });
 
-  html += `<tr style="border-top:2px solid var(--border2);background:var(--sand3);font-weight:700">
-    <td colspan="5" style="padding:10px 10px">TOTAL</td>
-    <td style="padding:10px 10px;text-align:right">${totalNoches}</td>
-    <td style="padding:10px 10px;text-align:right">—</td>
-    <td style="padding:10px 10px;text-align:right">${eur(totalSinIva)}</td>
-    <td style="padding:10px 10px;text-align:right">${eur(totalIva)}</td>
-    <td style="padding:10px 10px;text-align:right">${eur(totalConIva)}</td>
+  html += `<tr style="border-top:2px solid var(--border2);background:var(--sand3)">
+    <td colspan="6" style="padding:10px 8px;font-weight:700;font-size:13px">TOTAL</td>
+    <td style="padding:10px 8px;text-align:right;font-weight:700">${totNoches}</td>
+    <td style="padding:10px 8px;text-align:right">—</td>
+    <td style="padding:10px 8px;text-align:right;font-weight:700">${eur(totBase)}</td>
+    <td style="padding:10px 8px;text-align:right;font-weight:700">${eur(totIva)}</td>
+    <td style="padding:10px 8px;text-align:right;font-weight:700">${eur(totIts)}</td>
+    <td style="padding:10px 8px;text-align:right;font-weight:700">${totFianza>0?eur(totFianza):'—'}</td>
+    <td style="padding:10px 8px;text-align:right;font-weight:700;font-size:14px">${eur(totTotal)}</td>
   </tr></tbody></table>`;
 
   document.getElementById('inf-res-tabla').innerHTML = html;
 }
 
 function exportInformeReservasCSV() {
-  const rows = [['Entrada','Salida','Apartamento','Huésped','Canal','Noches','€/Noche','Base sin IVA','IVA','Total']];
-  const filtro = document.getElementById('inf-res-filtro').value;
+  const filtro    = document.getElementById('inf-res-filtro').value;
   const aptFiltro = document.getElementById('inf-res-apt').value;
   const canalFiltro = document.getElementById('inf-res-canal').value;
   const year = new Date().getFullYear();
   let reservas = DB.reservas.filter(r => r.estado !== 'cancelada');
-  if (aptFiltro) reservas = reservas.filter(r => String(r.apt) === aptFiltro);
+  if (aptFiltro)   reservas = reservas.filter(r => String(r.apt) === aptFiltro);
   if (canalFiltro) reservas = reservas.filter(r => r.canal === canalFiltro);
   if (filtro === 'mes') {
     const mes = parseInt(document.getElementById('inf-res-mes').value);
@@ -3375,22 +3377,33 @@ function exportInformeReservasCSV() {
   } else if (filtro === 'rango') {
     const desde = document.getElementById('inf-res-desde').value;
     const hasta = document.getElementById('inf-res-hasta').value;
-    if (desde) reservas = reservas.filter(r => r.entrada >= desde);
+    if (desde) reservas = reservas.filter(r => r.salida >= desde);
     if (hasta) reservas = reservas.filter(r => r.entrada <= hasta);
   } else {
     reservas = reservas.filter(r => r.entrada.startsWith(String(year)));
   }
-  reservas.sort((a,b) => a.entrada < b.entrada ? -1 : 1).forEach(r => {
+  reservas.sort((a,b) => a.entrada < b.entrada ? -1 : 1);
+
+  const fmt = d => { const p=d.split('-'); return p[2]+'/'+p[1]+'/'+p[0]; };
+  const CANAL = { directo:'Directo', booking:'Booking.com', airbnb:'Airbnb', web:'Web propia' };
+  const rows = [['Entrada','Salida','Apartamento','Huésped principal','Canal','Adultos','Noches','€/Noche','Alojamiento (sin IVA)','IVA 10%','ITS','Fianza','Total']];
+
+  let totNoches=0,totBase=0,totIva=0,totIts=0,totFianza=0,totTotal=0;
+  reservas.forEach(r => {
     const t = calcTotalReserva(r);
-    const noches = diffDays(r.entrada, r.salida);
-    const huesped = r.huespedes && r.huespedes[0] ? `${r.huespedes[0].nombre} ${r.huespedes[0].apellidos||''}`.trim() : '';
-    const fmtDate = d => { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; };
-    rows.push([fmtDate(r.entrada), fmtDate(r.salida), `Apt. ${r.apt}`, huesped, r.canal, noches, r.precioNoche||0, t.base.toFixed(2), t.ivaAmt.toFixed(2), t.total.toFixed(2)]);
+    const h = r.huespedes && r.huespedes[0] ? (r.huespedes[0].nombre+' '+(r.huespedes[0].apellidos||'')).trim() : '';
+    totNoches+=t.noches; totBase+=t.base; totIva+=t.iva; totIts+=t.its; totFianza+=t.fianza; totTotal+=t.total;
+    rows.push([fmt(r.entrada), fmt(r.salida), 'Apt.'+r.apt, h, CANAL[r.canal]||r.canal,
+      r.adultos||1, t.noches, r.precioNoche||0,
+      t.base.toFixed(2), t.iva.toFixed(2), t.its.toFixed(2), t.fianza.toFixed(2), t.total.toFixed(2)]);
   });
-  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  rows.push(['TOTAL','','','','','',totNoches,'',totBase.toFixed(2),totIva.toFixed(2),totIts.toFixed(2),totFianza.toFixed(2),totTotal.toFixed(2)]);
+
+  const BOM = '\uFEFF';
+  const csv = BOM + rows.map(r => r.map(v => '"'+String(v).replace(/"/g,'""')+'"').join(';')).join('\n');
   const a = document.createElement('a');
   a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
-  a.download = `informe-reservas-${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = 'informe-reservas-'+new Date().toISOString().slice(0,10)+'.csv';
   a.click();
   toast('✓ CSV descargado');
 }
@@ -3398,27 +3411,29 @@ function exportInformeReservasCSV() {
 function exportInformeReservasPDF() {
   const win = window.open('', '_blank');
   const tabla = document.getElementById('inf-res-tabla').innerHTML;
-  const totales = document.getElementById('inf-res-totales').innerHTML;
-  const fecha = new Date().toLocaleDateString('es-ES');
+  const totales = document.getElementById('inf-res-totales').innerText;
+  const fecha = new Date().toLocaleDateString('es-ES', {day:'2-digit',month:'long',year:'numeric'});
   win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Informe Reservas — Surest Menorca</title>
     <style>
-      body { font-family: Arial, sans-serif; font-size: 12px; color: #222; padding: 30px; }
-      h1 { font-size: 18px; margin-bottom: 4px; }
-      p { color: #888; margin: 0 0 16px 0; font-size: 11px; }
-      .totales { display:flex; gap:20px; flex-wrap:wrap; background:#f5f3ef; padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:12px; }
-      table { width:100%; border-collapse:collapse; }
-      th { background:#f5f3ef; padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #ddd; }
-      td { padding:7px 8px; border-bottom:1px solid #eee; }
-      tr:nth-child(even) td { background:#fafafa; }
-      .tot-row td { font-weight:bold; border-top:2px solid #ddd; background:#f5f3ef; }
-      @media print { body { padding: 15px; } }
+      body{font-family:Arial,sans-serif;font-size:11px;color:#222;padding:24px;margin:0}
+      h1{font-size:16px;margin:0 0 2px 0;color:#1a1a1a}
+      .sub{color:#888;font-size:10px;margin:0 0 14px 0}
+      .totales{background:#f5f3ef;padding:10px 14px;border-radius:6px;margin-bottom:14px;font-size:11px;line-height:1.8}
+      table{width:100%;border-collapse:collapse;font-size:10px}
+      th{background:#f0ede8;padding:6px 7px;text-align:left;font-size:9px;text-transform:uppercase;letter-spacing:0.4px;border-bottom:2px solid #ccc;white-space:nowrap}
+      th.r,td.r{text-align:right}
+      td{padding:6px 7px;border-bottom:1px solid #eee;white-space:nowrap}
+      tr:nth-child(even) td{background:#fafafa}
+      .tot td{font-weight:bold;border-top:2px solid #999;background:#f0ede8}
+      @page{margin:15mm}
+      @media print{body{padding:0}}
     </style></head><body>
     <h1>Informe de Reservas — Apartamentos Surest Menorca</h1>
-    <p>Generado el ${fecha}</p>
+    <p class="sub">Generado el ${fecha} · Establecimiento APM1577</p>
     <div class="totales">${totales}</div>
-    ${tabla}
-    <script>window.print();<\/script>
+    ${tabla.replace(/class="[^"]*"/g,'').replace(/style="[^"]*text-align:right[^"]*"/g,'class="r"')}
+    <script>setTimeout(()=>window.print(),300);<\/script>
   </body></html>`);
   win.document.close();
 }
