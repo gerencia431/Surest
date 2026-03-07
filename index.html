@@ -792,6 +792,46 @@ table.data-table { width: 100%; border-collapse: collapse; }
 
       <!-- == INFORMES == -->
       <div class="panel" id="panel-informes">
+
+        <!-- INFORME DE RESERVAS -->
+        <div class="card" style="margin-bottom:20px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div class="card-title" style="margin:0">📋 Informe de Reservas</div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+              <select id="inf-res-filtro" onchange="renderInformeReservas()" style="padding:5px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px">
+                <option value="temporada">Temporada completa</option>
+                <option value="mes">Por mes</option>
+                <option value="rango">Rango de fechas</option>
+              </select>
+              <select id="inf-res-mes" onchange="renderInformeReservas()" style="padding:5px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px;display:none">
+                <option value="1">Enero</option><option value="2">Febrero</option><option value="3">Marzo</option>
+                <option value="4">Abril</option><option value="5">Mayo</option><option value="6">Junio</option>
+                <option value="7">Julio</option><option value="8">Agosto</option><option value="9">Septiembre</option>
+                <option value="10">Octubre</option><option value="11">Noviembre</option><option value="12">Diciembre</option>
+              </select>
+              <input type="date" id="inf-res-desde" onchange="renderInformeReservas()" style="padding:5px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px;display:none">
+              <input type="date" id="inf-res-hasta" onchange="renderInformeReservas()" style="padding:5px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px;display:none">
+              <select id="inf-res-apt" onchange="renderInformeReservas()" style="padding:5px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px">
+                <option value="">Todos los apts.</option>
+                <option value="1">Apt. 1</option><option value="2">Apt. 2</option><option value="3">Apt. 3</option>
+                <option value="4">Apt. 4</option><option value="5">Apt. 5</option><option value="6">Apt. 6</option>
+                <option value="7">Apt. 7</option><option value="8">Apt. 8</option>
+              </select>
+              <select id="inf-res-canal" onchange="renderInformeReservas()" style="padding:5px 10px;border:1px solid var(--border2);border-radius:6px;font-size:12px">
+                <option value="">Todos los canales</option>
+                <option value="directo">Directo</option>
+                <option value="booking">Booking.com</option>
+                <option value="airbnb">Airbnb</option>
+                <option value="web">Web propia</option>
+              </select>
+              <button class="btn btn-outline btn-sm" onclick="exportInformeReservasCSV()">⬇ CSV</button>
+              <button class="btn btn-outline btn-sm" onclick="exportInformeReservasPDF()">⬇ PDF</button>
+            </div>
+          </div>
+          <div id="inf-res-totales" style="display:flex;gap:20px;flex-wrap:wrap;margin-bottom:14px;padding:12px 16px;background:var(--sand2);border-radius:8px;font-size:13px"></div>
+          <div id="inf-res-tabla" style="overflow-x:auto;font-size:13px"></div>
+        </div>
+
         <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
           <button class="btn btn-outline" onclick="exportInformesPDF()">⬇ Exportar Informe PDF</button>
         </div>
@@ -1559,7 +1599,7 @@ function showPanel(name) {
   if (name === 'tarifas') renderTarifas();
   if (name === 'limpiezas') {} // manual trigger via button
   if (name === 'config') renderConfig();
-  if (name === 'informes') { renderInformes(); renderInformeLimp(); }
+  if (name === 'informes') { renderInformes(); renderInformeLimp(); renderInformeReservas(); }
   if (name === 'emails') renderEmailsConfig();
   if (name === 'partes') { document.getElementById('parte-fecha').value = isoDate(new Date()); renderPartesHistorial(); renderCheckinControl(); }
 }
@@ -3199,6 +3239,190 @@ function exportLimpiezasPDF() { exportLimpPDF('days', 15); }
 // ==========================================================
 // INFORMES
 // ==========================================================
+
+// ==========================================================
+// INFORME DE RESERVAS
+// ==========================================================
+function renderInformeReservas() {
+  const filtro = document.getElementById('inf-res-filtro').value;
+  const aptFiltro = document.getElementById('inf-res-apt').value;
+  const canalFiltro = document.getElementById('inf-res-canal').value;
+  const year = new Date().getFullYear();
+
+  // Mostrar/ocultar controles según filtro
+  const elMes   = document.getElementById('inf-res-mes');
+  const elDesde = document.getElementById('inf-res-desde');
+  const elHasta = document.getElementById('inf-res-hasta');
+  elMes.style.display   = filtro === 'mes'   ? '' : 'none';
+  elDesde.style.display = filtro === 'rango' ? '' : 'none';
+  elHasta.style.display = filtro === 'rango' ? '' : 'none';
+
+  // Filtrar reservas
+  let reservas = DB.reservas.filter(r => r.estado !== 'cancelada');
+  if (aptFiltro) reservas = reservas.filter(r => String(r.apt) === aptFiltro);
+  if (canalFiltro) reservas = reservas.filter(r => r.canal === canalFiltro);
+
+  if (filtro === 'mes') {
+    const mes = parseInt(document.getElementById('inf-res-mes').value);
+    reservas = reservas.filter(r => {
+      const m = parseInt(r.entrada.split('-')[1]);
+      return m === mes;
+    });
+  } else if (filtro === 'rango') {
+    const desde = document.getElementById('inf-res-desde').value;
+    const hasta = document.getElementById('inf-res-hasta').value;
+    if (desde) reservas = reservas.filter(r => r.entrada >= desde);
+    if (hasta) reservas = reservas.filter(r => r.entrada <= hasta);
+  } else {
+    // temporada: año actual
+    reservas = reservas.filter(r => r.entrada.startsWith(String(year)));
+  }
+
+  // Ordenar por entrada
+  reservas = reservas.slice().sort((a, b) => a.entrada < b.entrada ? -1 : 1);
+
+  // Calcular totales
+  let totalNoches = 0, totalSinIva = 0, totalIva = 0, totalConIva = 0;
+  reservas.forEach(r => {
+    const t = calcTotalReserva(r);
+    const noches = diffDays(r.entrada, r.salida);
+    totalNoches += noches;
+    totalSinIva += t.base;
+    totalIva += t.ivaAmt;
+    totalConIva += t.total;
+  });
+
+  // Totales
+  document.getElementById('inf-res-totales').innerHTML = `
+    <span><strong>${reservas.length}</strong> reservas</span>
+    <span style="color:var(--stone)">·</span>
+    <span><strong>${totalNoches}</strong> noches</span>
+    <span style="color:var(--stone)">·</span>
+    <span>Base: <strong>${eur(totalSinIva)}</strong></span>
+    <span style="color:var(--stone)">·</span>
+    <span>IVA: <strong>${eur(totalIva)}</strong></span>
+    <span style="color:var(--stone)">·</span>
+    <span style="color:var(--dark);font-weight:700">Total: ${eur(totalConIva)}</span>
+  `;
+
+  if (!reservas.length) {
+    document.getElementById('inf-res-tabla').innerHTML = '<div style="color:var(--stone);padding:20px 0">Sin reservas para el período seleccionado.</div>';
+    return;
+  }
+
+  // Tabla
+  const CANAL_LABELS = { directo:'Directo', booking:'Booking.com', airbnb:'Airbnb', web:'Web propia' };
+  let html = `<table style="width:100%;border-collapse:collapse">
+    <thead>
+      <tr style="border-bottom:2px solid var(--border2);font-size:11px;letter-spacing:0.5px;color:var(--stone);text-transform:uppercase">
+        <th style="padding:8px 10px;text-align:left;font-weight:600">Entrada</th>
+        <th style="padding:8px 10px;text-align:left;font-weight:600">Salida</th>
+        <th style="padding:8px 10px;text-align:left;font-weight:600">Apt.</th>
+        <th style="padding:8px 10px;text-align:left;font-weight:600">Huésped</th>
+        <th style="padding:8px 10px;text-align:left;font-weight:600">Canal</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:600">Noches</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:600">€/Noche</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:600">Base</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:600">IVA</th>
+        <th style="padding:8px 10px;text-align:right;font-weight:600">Total</th>
+      </tr>
+    </thead><tbody>`;
+
+  reservas.forEach((r, i) => {
+    const t = calcTotalReserva(r);
+    const noches = diffDays(r.entrada, r.salida);
+    const huesped = r.huespedes && r.huespedes[0] ? `${r.huespedes[0].nombre} ${r.huespedes[0].apellidos||''}`.trim() : '—';
+    const fmtDate = d => { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; };
+    const bg = i % 2 === 0 ? 'var(--white)' : 'var(--sand2)';
+    html += `<tr style="background:${bg};border-bottom:1px solid var(--border)">
+      <td style="padding:8px 10px">${fmtDate(r.entrada)}</td>
+      <td style="padding:8px 10px">${fmtDate(r.salida)}</td>
+      <td style="padding:8px 10px;font-weight:600">Apt. ${r.apt}</td>
+      <td style="padding:8px 10px">${huesped}</td>
+      <td style="padding:8px 10px;color:var(--stone)">${CANAL_LABELS[r.canal]||r.canal}</td>
+      <td style="padding:8px 10px;text-align:right">${noches}</td>
+      <td style="padding:8px 10px;text-align:right">${eur(r.precioNoche||0)}</td>
+      <td style="padding:8px 10px;text-align:right">${eur(t.base)}</td>
+      <td style="padding:8px 10px;text-align:right;color:var(--stone)">${eur(t.ivaAmt)}</td>
+      <td style="padding:8px 10px;text-align:right;font-weight:600">${eur(t.total)}</td>
+    </tr>`;
+  });
+
+  html += `<tr style="border-top:2px solid var(--border2);background:var(--sand3);font-weight:700">
+    <td colspan="5" style="padding:10px 10px">TOTAL</td>
+    <td style="padding:10px 10px;text-align:right">${totalNoches}</td>
+    <td style="padding:10px 10px;text-align:right">—</td>
+    <td style="padding:10px 10px;text-align:right">${eur(totalSinIva)}</td>
+    <td style="padding:10px 10px;text-align:right">${eur(totalIva)}</td>
+    <td style="padding:10px 10px;text-align:right">${eur(totalConIva)}</td>
+  </tr></tbody></table>`;
+
+  document.getElementById('inf-res-tabla').innerHTML = html;
+}
+
+function exportInformeReservasCSV() {
+  const rows = [['Entrada','Salida','Apartamento','Huésped','Canal','Noches','€/Noche','Base sin IVA','IVA','Total']];
+  const filtro = document.getElementById('inf-res-filtro').value;
+  const aptFiltro = document.getElementById('inf-res-apt').value;
+  const canalFiltro = document.getElementById('inf-res-canal').value;
+  const year = new Date().getFullYear();
+  let reservas = DB.reservas.filter(r => r.estado !== 'cancelada');
+  if (aptFiltro) reservas = reservas.filter(r => String(r.apt) === aptFiltro);
+  if (canalFiltro) reservas = reservas.filter(r => r.canal === canalFiltro);
+  if (filtro === 'mes') {
+    const mes = parseInt(document.getElementById('inf-res-mes').value);
+    reservas = reservas.filter(r => parseInt(r.entrada.split('-')[1]) === mes);
+  } else if (filtro === 'rango') {
+    const desde = document.getElementById('inf-res-desde').value;
+    const hasta = document.getElementById('inf-res-hasta').value;
+    if (desde) reservas = reservas.filter(r => r.entrada >= desde);
+    if (hasta) reservas = reservas.filter(r => r.entrada <= hasta);
+  } else {
+    reservas = reservas.filter(r => r.entrada.startsWith(String(year)));
+  }
+  reservas.sort((a,b) => a.entrada < b.entrada ? -1 : 1).forEach(r => {
+    const t = calcTotalReserva(r);
+    const noches = diffDays(r.entrada, r.salida);
+    const huesped = r.huespedes && r.huespedes[0] ? `${r.huespedes[0].nombre} ${r.huespedes[0].apellidos||''}`.trim() : '';
+    const fmtDate = d => { const p = d.split('-'); return `${p[2]}/${p[1]}/${p[0]}`; };
+    rows.push([fmtDate(r.entrada), fmtDate(r.salida), `Apt. ${r.apt}`, huesped, r.canal, noches, r.precioNoche||0, t.base.toFixed(2), t.ivaAmt.toFixed(2), t.total.toFixed(2)]);
+  });
+  const csv = rows.map(r => r.map(v => `"${String(v).replace(/"/g,'""')}"`).join(',')).join('\n');
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(new Blob([csv], {type:'text/csv;charset=utf-8;'}));
+  a.download = `informe-reservas-${new Date().toISOString().slice(0,10)}.csv`;
+  a.click();
+  toast('✓ CSV descargado');
+}
+
+function exportInformeReservasPDF() {
+  const win = window.open('', '_blank');
+  const tabla = document.getElementById('inf-res-tabla').innerHTML;
+  const totales = document.getElementById('inf-res-totales').innerHTML;
+  const fecha = new Date().toLocaleDateString('es-ES');
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8">
+    <title>Informe Reservas — Surest Menorca</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 12px; color: #222; padding: 30px; }
+      h1 { font-size: 18px; margin-bottom: 4px; }
+      p { color: #888; margin: 0 0 16px 0; font-size: 11px; }
+      .totales { display:flex; gap:20px; flex-wrap:wrap; background:#f5f3ef; padding:10px 14px; border-radius:6px; margin-bottom:16px; font-size:12px; }
+      table { width:100%; border-collapse:collapse; }
+      th { background:#f5f3ef; padding:7px 8px; text-align:left; font-size:10px; text-transform:uppercase; letter-spacing:0.5px; border-bottom:2px solid #ddd; }
+      td { padding:7px 8px; border-bottom:1px solid #eee; }
+      tr:nth-child(even) td { background:#fafafa; }
+      .tot-row td { font-weight:bold; border-top:2px solid #ddd; background:#f5f3ef; }
+      @media print { body { padding: 15px; } }
+    </style></head><body>
+    <h1>Informe de Reservas — Apartamentos Surest Menorca</h1>
+    <p>Generado el ${fecha}</p>
+    <div class="totales">${totales}</div>
+    ${tabla}
+    <script>window.print();<\/script>
+  </body></html>`);
+  win.document.close();
+}
+
 function renderInformes() {
   const year = new Date().getFullYear();
   const reservasActivas = DB.reservas.filter(r => r.estado !== 'cancelada');
@@ -3952,7 +4176,7 @@ function renderAll() {
   if (id === 'panel-reservas') { renderReservasStats(); renderReservasTable(); }
   if (id === 'panel-huespedes') renderHuespedesTable();
   if (id === 'panel-facturas') renderFacturasTable();
-  if (id === 'panel-informes') { renderInformes(); renderInformeLimp(); }
+  if (id === 'panel-informes') { renderInformes(); renderInformeLimp(); renderInformeReservas(); }
   if (id === 'panel-partes') { renderPartesHistorial(); renderCheckinControl(); }
   // panel-limpiezas: NUNCA auto-render, es manual (botón Generar planning)
   // panel-config: se refresca por separado con renderConfig()
