@@ -602,7 +602,7 @@ table.data-table { width: 100%; border-collapse: collapse; }
                 &nbsp;<span style="display:inline-block;width:10px;height:10px;border-left:3px solid #22c55e;border-right:3px solid #f97316;margin-right:3px;vertical-align:middle"></span>Entrada/Salida
               </span>
             </div>
-            <button class="btn btn-primary btn-sm" onclick="renderLimpiezas()">🧹 Generar planning</button>
+            <button class="btn btn-primary btn-sm" onclick="renderLimpiezas(); toast('✓ Planning de limpiezas generado')">🧹 Generar planning</button>
           </div>
           <div style="overflow-x:auto" id="limp-planning-wrap">
             <div style="text-align:center;padding:60px;color:var(--stone)">
@@ -1428,7 +1428,6 @@ function checkSheetsOnLoad() {
         const sheetsUrl  = DB.config.sheetsUrl;
         const password   = DB.config.password;
         const appBaseUrl = DB.config.appBaseUrl;
-        const prevSync   = DB.config._lastSync;
         DB = d.data;
         if (sheetsUrl)  DB.config.sheetsUrl  = sheetsUrl;
         if (password)   DB.config.password   = password;
@@ -1437,11 +1436,13 @@ function checkSheetsOnLoad() {
         renderAll();
         renderConfig();
         const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
-        setSheetsStatus('✓ Sync ' + ts, 'var(--green)');
+        const nRes = (DB.reservas||[]).length;
+        const nTar = (DB.periodosTarifa||[]).length;
+        setSheetsStatus('✓ Sync ' + ts + ' · ' + nRes + ' reservas · ' + nTar + ' tarifas', 'var(--green)');
       } else if (!d.data) {
         // Sheets vacío — subir local para inicializar
         syncToSheets(true);
-        setSheetsStatus('Datos subidos a Sheets', 'var(--stone)');
+        setSheetsStatus('Sheets vacío — subiendo local', 'var(--stone)');
       }
     })
     .catch(() => {
@@ -3077,8 +3078,6 @@ function renderLimpiezas() {
   html += '</tbody></table>';
   document.getElementById('limp-planning-wrap').innerHTML = html;
   // export opts always visible
-
-  toast('✓ Planning de limpiezas generado');
 }
 
 function exportLimpPDF(mode, param) {
