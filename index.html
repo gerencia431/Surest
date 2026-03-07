@@ -1298,6 +1298,15 @@ function loadDB() {
     if (!DB.partesHistorial) DB.partesHistorial = [];
     if (!DB.config.aptCodigos) DB.config.aptCodigos = {};
     if (!DB.config.aptWifi)    DB.config.aptWifi = {};
+    // Defaults códigos y WiFi por apartamento
+    const _DC = {1:'2601',2:'2602',3:'2603',4:'2604',5:'2605',6:'2606',7:'2607',8:'2608'};
+    const _DW = {1:'SUREST / 01181',2:'SUREST / 01282',3:'SUREST / 01383',4:'SUREST / 01484',5:'SUREST / 01585',6:'SUREST / 01686',7:'SUREST / 01787',8:'SUREST / 01888'};
+    Object.keys(_DC).forEach(k => { if (!DB.config.aptCodigos[k]) DB.config.aptCodigos[k] = _DC[k]; });
+    Object.keys(_DW).forEach(k => { if (!DB.config.aptWifi[k])    DB.config.aptWifi[k]    = _DW[k]; });
+    // Defaults links reseñas en emailConfig
+    if (!DB.config.emailConfig) DB.config.emailConfig = {};
+    if (!DB.config.emailConfig.linkGoogle)  DB.config.emailConfig.linkGoogle  = 'https://www.google.com/maps/place/Apartamentos+Surest/@40.0027058,3.8117651,192m/data=!3m1!1e3!4m8!3m7!1s0x12be06b2fd0e6b5f:0x4c0f0d36bf1bdafe!8m2!3d40.0027058!4d3.8121418!9m1!1b1!16s%2Fg%2F11fmlj551v';
+    if (!DB.config.emailConfig.linkBooking) DB.config.emailConfig.linkBooking = 'https://www.booking.com/hotel/es/apartamentos-surest.es.html';
   }
 }
 
@@ -2051,7 +2060,7 @@ function previewFactura(id) {
   </div>`;
 
   document.getElementById('modal-factura').classList.add('open');
-  r.facturaGenerada = true; saveDB(); syncToSheets(true);
+  r.facturaGenerada = true; saveDB(); syncToSheets(true); syncToSheets(true);
 }
 
 function printInvoice() {
@@ -2444,7 +2453,7 @@ function cambiarPassword() {
   if (!nueva || nueva.length < 6) { toast('⚠ La contraseña debe tener mínimo 6 caracteres'); return; }
   if (nueva !== conf) { toast('⚠ Las contraseñas no coinciden'); return; }
   DB.config.password = nueva;
-  saveDB(); syncToSheets(true);
+  saveDB(); syncToSheets(true); syncToSheets(true);
   document.getElementById('cfg-pwd-nueva').value = '';
   document.getElementById('cfg-pwd-conf').value = '';
   toast('✓ Contraseña actualizada correctamente');
@@ -3827,8 +3836,8 @@ function renderEmailsConfig() {
   set('cfg-email-actividades', ec.actividades || '');
   set('cfg-email-apt-info',    ec.aptInfo     || '');
   set('cfg-email-emergencias', ec.emergencias || '');
-  set('cfg-link-booking',      ec.linkBooking || '');
-  set('cfg-link-google',       ec.linkGoogle  || '');
+  set('cfg-link-booking',      ec.linkBooking || (DB.config.emailConfig && DB.config.emailConfig.linkBooking) || 'https://www.booking.com/hotel/es/apartamentos-surest.es.html');
+  set('cfg-link-google',       ec.linkGoogle  || (DB.config.emailConfig && DB.config.emailConfig.linkGoogle)  || 'https://www.google.com/maps/place/Apartamentos+Surest/@40.0027058,3.8117651,192m/data=!3m1!1e3!4m8!3m7!1s0x12be06b2fd0e6b5f:0x4c0f0d36bf1bdafe!8m2!3d40.0027058!4d3.8121418!9m1!1b1!16s%2Fg%2F11fmlj551v');
   set('cfg-link-airbnb',       ec.linkAirbnb  || '');
   // Always show template content - use saved version if exists, else default
   const _firma = ec.firma || 'Un abrazo,\nMª Ángeles\nApartamentos Surest · Ciutadella, Menorca\n📞 630 531 275';
