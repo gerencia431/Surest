@@ -3935,10 +3935,8 @@ function initApp() {
   renderConfig();
   setTimeout(checkSheetsOnLoad, 300);
 
-  // Sync al volver a la pestaña (cambio de dispositivo o navegador)
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') checkSheetsOnLoad();
-  });
+  // Sheets solo se carga al inicio (checkSheetsOnLoad en initApp)
+  // No se descarga al volver a la pestaña para no machacar ediciones en curso
 }
 
 // ==========================================================
