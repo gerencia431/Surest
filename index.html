@@ -3934,14 +3934,11 @@ function initApp() {
   renderAll();
   renderConfig();
   setTimeout(checkSheetsOnLoad, 300);
-  // Poll cada 30s — detecta cambios hechos en otro dispositivo/navegador
-  setInterval(() => {
-    if (document.visibilityState === 'visible') {
-      // No sincronizar si hay un modal abierto (el usuario podría estar editando)
-      const modalAbierto = document.querySelector('.modal-overlay.open, [id^="modal-"].open, #modal-tarifa, #modal-reserva.open');
-      if (!modalAbierto && !window._syncingToSheets) checkSheetsOnLoad();
-    }
-  }, 30000);
+
+  // Sync al volver a la pestaña (cambio de dispositivo o navegador)
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') checkSheetsOnLoad();
+  });
 }
 
 // ==========================================================
@@ -3949,11 +3946,18 @@ function initApp() {
 // ==========================================================
 function renderAll() {
   renderPlanning();
-  // Refrescar panel activo si está visible
-  const activePanel = document.querySelector('.panel[style*="display: block"], .panel[style*="display:block"]');
-  if (document.getElementById('panel-tarifas') && document.getElementById('panel-tarifas').style.display !== 'none') renderTarifas();
-  if (document.getElementById('panel-reservas') && document.getElementById('panel-reservas').style.display !== 'none') { renderReservasStats(); renderReservasTable(); }
-  if (document.getElementById('panel-limpiezas') && document.getElementById('panel-limpiezas').style.display !== 'none') renderLimpiezas();
+  // Refrescar panel activo según clase active
+  const active = document.querySelector('.panel.active');
+  if (!active) return;
+  const id = active.id;
+  if (id === 'panel-tarifas') renderTarifas();
+  if (id === 'panel-reservas') { renderReservasStats(); renderReservasTable(); }
+  if (id === 'panel-huespedes') renderHuespedesTable();
+  if (id === 'panel-facturas') renderFacturasTable();
+  if (id === 'panel-informes') { renderInformes(); renderInformeLimp(); }
+  if (id === 'panel-partes') { renderPartesHistorial(); renderCheckinControl(); }
+  // panel-limpiezas: NUNCA auto-render, es manual (botón Generar planning)
+  // panel-config: se refresca por separado con renderConfig()
 }
 
 function autoFillEmailTemplates() {
@@ -4309,11 +4313,14 @@ document.addEventListener('DOMContentLoaded',function(){
   });
 });
 
-// Sync al cerrar/cambiar pestaña — usa sendBeacon para que no se cancele
+// Guardar al cerrar/cambiar pestaña — usa sendBeacon para que no se cancele
 window.addEventListener('visibilitychange', function() {
   if (document.visibilityState === 'hidden') {
+    // Guardar automáticamente al salir/cerrar
     const url = getSheetsUrl();
     if (!url || !DB) return;
+    DB.config._lastSync = new Date().toISOString();
+    localStorage.setItem('surestDB', JSON.stringify(DB));
     const body = JSON.stringify({ action: 'save', data: DB });
     navigator.sendBeacon
       ? navigator.sendBeacon(url, new Blob([body], { type: 'text/plain' }))
