@@ -1788,7 +1788,11 @@ function renderPlanning() {
             // Name banner cell: floating label spans remaining stay days
             const labelW = Math.max(nameCellSpan * 34 - 6, 30);
             // Entrada day: paint right half only (left half = previous guest checkout)
-            const entraCellBg = isFirst ? `linear-gradient(to right, transparent 50%, ${bg} 50%)` : bg;
+            const entraCellBg = isFirst && isLast
+              ? `linear-gradient(to right, transparent 50%, ${bg} 50%)`  // 1 noche: entra y sale mismo día visual
+              : isFirst ? `linear-gradient(to right, transparent 50%, ${bg} 50%)`
+              : isLast  ? `linear-gradient(to right, ${bg}dd 50%, transparent 50%)`
+              : bg;
             html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
               style="background:${entraCellBg};padding:0;overflow:visible;position:relative;z-index:3;${bsk}" title="${tooltip}">
               <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
@@ -1803,8 +1807,14 @@ function renderPlanning() {
             </td>`;
           } else {
             // Remaining days: colored background only
-            const dayBg = isLast ? bg + 'cc' : bg + (isWEk ? 'dd' : 'ee');
-            html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="editReserva('${startRes.id}')"
+            // Last day = checkout: paint only left half, right half is free for new reservation
+            const dayBg = isLast
+              ? `linear-gradient(to right, ${bg}dd 50%, transparent 50%)`
+              : bg + (isWEk ? 'dd' : 'ee');
+            const dayClick = isLast
+              ? `openNewReservaOnDay('${apt.num}','${dsk}')`
+              : `editReserva('${startRes.id}')`;
+            html += `<td class="pg-cell pg-cell-stay${isTodayk?' today':''}" onclick="${dayClick}"
               style="background:${dayBg};padding:0;${bsk}" title="${tooltip}"></td>`;
           }
         }
