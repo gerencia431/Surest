@@ -1735,11 +1735,13 @@ function renderPlanning() {
       const isMStart = d.day === 1;
       const borderStyle = isMStart ? 'border-left:2px solid var(--border2);' : '';
 
-      // Si este día ya fue pintado como celda de transición, saltarlo
-      if (skippedDays.has(ds)) { i++; continue; }
-
       // Find reservation starting today, or one that started before season and this is its first visible day
       let startRes = aptRes.find(r => r.entrada === ds && !shownRes.has(r.id));
+      // Si este día ya fue pintado como celda bicolor de transición:
+      // - si hay reserva que empieza aquí, la procesamos pero sin emitir la celda k=0 (skipFirstCell=true)
+      // - si no hay reserva, saltamos el día
+      const skipFirstCell = skippedDays.has(ds);
+      if (skipFirstCell && !startRes) { i++; continue; }
       if (!startRes) {
         // Reservation started before the season - show from first season day
         startRes = aptRes.find(r => r.entrada < firstSeasonDay && r.salida > ds && i === 0 && !shownRes.has(r.id));
@@ -1785,8 +1787,10 @@ function renderPlanning() {
           const isMStartk = dk.day === 1;
           const bsk = isMStartk ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
           const isFirst = k === 0;
-          const isNameCell = hasOverlap ? k === 1 : k === 0;
-          const nameCellSpan = hasOverlap ? stayDays - 1 : stayDays;
+          // Si skipFirstCell, k=0 ya está pintado como bicolor → saltarlo
+          if (isFirst && skipFirstCell) continue;
+          const isNameCell = hasOverlap ? k === 1 : (skipFirstCell ? k === 1 : k === 0);
+          const nameCellSpan = Math.max((hasOverlap || skipFirstCell) ? stayDays - 1 : stayDays, 1);
 
           if (isFirst && hasOverlap) {
             // Solapamiento real: ⚡ en rojo
