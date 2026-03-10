@@ -1285,7 +1285,7 @@ let DB = {
       9:  { '1h':110, '2h':130 },
       10: { '1h':105, '2h':130 }
     },
-    itsAlta: 4, itsMedia: 2,
+    itsAlta: 2, itsMedia: 0.5,
     numFactura: 1
   }
 };
@@ -1586,22 +1586,33 @@ function fmt2(n) { return Number(n).toFixed(2); }
 
 // ITS Baleares calculation (configurable)
 function calcITS(fechaEntrada, fechaSalida, adultos, ninos) {
+  // ITS Baleares — Ley 2/2016 (viviendas turísticas)
+  // Temporada alta (may-oct): 2€/persona/noche. Temporada baja (nov-abr): 0.50€/persona/noche
+  // Descuento 50% a partir de la noche 9 (índice 8, 0-based)
+  // IVA 10% incluido en el cálculo
   if (!fechaEntrada || !fechaSalida) return 0;
+  const descDesdeNoche = (DB.config.itsDescNoche !== undefined ? DB.config.itsDescNoche : 9); // noche 9
+  const descPct = (DB.config.itsDescPct !== undefined ? DB.config.itsDescPct : 50) / 100;
+  const adultosN = adultos || 1;
   let total = 0;
   let current = parseDate(fechaEntrada);
   const end = parseDate(fechaSalida);
-  const descNoche = (DB.config.itsDescNoche || 8) - 1; // 0-indexed (after night 8 = from index 8)
-  const descPct = (DB.config.itsDescPct !== undefined ? DB.config.itsDescPct : 50) / 100;
   let nightCount = 0;
   while (current < end) {
     const m = current.getMonth() + 1;
-    const rate = (m >= 6 && m <= 8) ? (DB.config.itsAlta || 4) : (DB.config.itsMedia || 2);
-    const discount = nightCount >= descNoche ? (1 - descPct) : 1;
-    total += rate * discount * (adultos || 1);
+    // Temporada alta: mayo(5) a octubre(10)
+    const isAlt = m >= 5 && m <= 10;
+    const rateBase = isAlt ? (DB.config.itsAlta || 2) : (DB.config.itsMedia || 0.5);
+    // Descuento estancias largas: a partir de la noche descDesdeNoche
+    const discount = nightCount >= (descDesdeNoche - 1) ? (1 - descPct) : 1;
+    const rateConDesc = rateBase * discount;
+    total += rateConDesc * adultosN;
     current = addDays(current, 1);
     nightCount++;
   }
-  return +total.toFixed(2);
+  // IVA 10% incluido
+  const iva = total * 0.10;
+  return +( total + iva ).toFixed(2);
 }
 
 function calcTotalReserva(r) {
@@ -2487,9 +2498,9 @@ function renderConfig() {
   document.getElementById('cfg-email').value = DB.config.email || '';
   document.getElementById('cfg-tel').value = DB.config.tel || '';
   document.getElementById('cfg-codigo-est').value = DB.config.codigoEst || '';
-  document.getElementById('cfg-its-alta').value = DB.config.itsAlta || 4;
-  document.getElementById('cfg-its-media').value = DB.config.itsMedia || 2;
-  if(document.getElementById('cfg-its-desc-noche')) document.getElementById('cfg-its-desc-noche').value = DB.config.itsDescNoche || 8;
+  document.getElementById('cfg-its-alta').value = DB.config.itsAlta !== undefined ? DB.config.itsAlta : 2;
+  document.getElementById('cfg-its-media').value = DB.config.itsMedia !== undefined ? DB.config.itsMedia : 0.5;
+  if(document.getElementById('cfg-its-desc-noche')) document.getElementById('cfg-its-desc-noche').value = DB.config.itsDescNoche !== undefined ? DB.config.itsDescNoche : 9;
   if(document.getElementById('cfg-its-desc-pct')) document.getElementById('cfg-its-desc-pct').value = DB.config.itsDescPct !== undefined ? DB.config.itsDescPct : 50;
   if(document.getElementById('cfg-wifi')) document.getElementById('cfg-wifi').value = DB.config.infoWifi || '';
   if(document.getElementById('cfg-bienvenida')) document.getElementById('cfg-bienvenida').value = DB.config.textoBienvenida || '';
