@@ -1191,7 +1191,27 @@ table.data-table { width: 100%; border-collapse: collapse; }
       <button class="btn btn-outline" onclick="closeModalReservaForce()">Cancelar</button>
       <button class="btn btn-outline" onclick="openEmailModal()" id="btn-email-reserva" style="display:none">✉ Enviar Email</button>
       <button class="btn btn-outline" id="btn-checkin-form" onclick="abrirLinkCheckin()" style="display:none">📋 Link registro viajeros</button>
+      <button class="btn btn-outline" id="btn-holded" onclick="abrirModalHolded()" style="display:none;background:#1a56db;color:#fff;border-color:#1a56db">🏦 Enviar a Holded</button>
       <button class="btn btn-primary" onclick="saveReserva()">Guardar Reserva</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- MODAL HOLDED -->
+<div class="modal-overlay" id="modal-holded" onclick="if(event.target===this)this.classList.remove('open')">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <h2>🏦 Enviar factura a Holded</h2>
+      <button class="modal-close" onclick="document.getElementById('modal-holded').classList.remove('open')">×</button>
+    </div>
+    <div class="modal-body" id="holded-modal-body">
+      <!-- Contenido dinámico -->
+    </div>
+    <div class="modal-footer">
+      <button class="btn btn-outline" onclick="document.getElementById('modal-holded').classList.remove('open')">Cancelar</button>
+      <button class="btn btn-outline" id="btn-holded-buscar" onclick="holdedBuscarContacto()">🔍 Buscar en Holded</button>
+      <button class="btn btn-primary" id="btn-holded-enviar" onclick="holdedEnviarFactura()" style="background:#1a56db;border-color:#1a56db">✓ Crear factura borrador</button>
     </div>
   </div>
 </div>
@@ -2042,6 +2062,7 @@ function renderReservasTable() {
       <td>
         <button class="btn btn-outline btn-sm" onclick="editReserva('${r.id}')" style="margin-right:4px">✏ Editar</button>
         <button class="btn btn-outline btn-sm" onclick="previewFactura('${r.id}')">🧾 Factura</button>
+        ${r.holdedInvoiceId ? `<a href="${r.holdedUrl||'#'}" target="_blank" class="btn btn-sm" style="background:#1a56db;color:#fff;border:none;margin-left:4px" title="Ver en Holded: ${r.holdedDocNumber||''}">🏦</a>` : ''}
         <button class="btn btn-danger btn-sm" onclick="eliminarReserva('${r.id}')" style="margin-left:4px">🗑</button>
       </td>
     </tr>`;
@@ -2605,6 +2626,7 @@ function openNewReserva() {
   document.getElementById('res-fianza').value = 0;
   document.getElementById('price-summary-box').style.display = 'none';
   document.getElementById('btn-email-reserva').style.display = 'none';
+  document.getElementById('btn-holded').style.display = 'none';
   document.getElementById('guest-forms').innerHTML = '';
   // Start with 2 guest forms
   addGuestForm(); addGuestForm();
@@ -2634,6 +2656,7 @@ function editReserva(id) {
   calcPrecio();
   document.getElementById('modal-reserva').classList.add('open');
   document.getElementById('btn-email-reserva').style.display = 'inline-flex';
+  document.getElementById('btn-holded').style.display = 'inline-flex';
 }
 
 function closeModalReserva(e) { if (e.target === document.getElementById('modal-reserva')) closeModalReservaForce(); }
@@ -4661,6 +4684,313 @@ window.addEventListener('visibilitychange', function() {
 });
 
 initApp();
+
+// ============================================================
+// HOLDED INTEGRATION
+// ============================================================
+const HOLDED_PRODUCT_TAXA     = '66696e4cccb588d7ac0d3f28'; // TAXA TURISTICA (2€)
+const HOLDED_PRODUCT_TAXA9    = '66c5ec02abbc3d3d260b7022'; // TAXA + 9 DIAS (1€)
+const HOLDED_SERIE_ID         = '';  // ← Pendiente: ID serie SUREST en Holded
+
+let _holdedReservaId  = null;
+let _holdedContactoId = null;
+
+// Abre el modal preparando el borrador para la reserva actualmente en edición
+function abrirModalHolded() {
+  const id = _editingId;
+  if (!id) return toast('⚠ Guarda la reserva primero');
+  const r = DB.reservas.find(x => x.id === id);
+  if (!r) return;
+  _holdedReservaId  = id;
+  _holdedContactoId = null;
+
+  // Calcular importes
+  const g0 = r.huespedes && r.huespedes[0];
+  const nombre   = g0 ? (g0.nombre + ' ' + g0.apellidos).trim() : 'Sin huésped';
+  const nif      = g0 ? (g0.numDoc || '') : '';
+  const email    = g0 ? (g0.email || '') : '';
+  const entrada  = r.entrada;
+  const salida   = r.salida;
+  const adultos  = r.adultos || 1;
+
+  const nNights = Math.round((new Date(salida) - new Date(entrada)) / 86400000);
+  const precioBase = (r.precioNoche || 0) * nNights;
+  const iva = r.iva !== undefined ? r.iva : 10;
+
+  // Cálculo taxa
+  const descDesdeNoche = DB.config.itsDescNoche || 9;
+  const taxaAlta       = DB.config.itsAlta || 2.0;
+  const nNochesBase    = Math.min(nNights, descDesdeNoche - 1);
+  const nNochesExtra   = Math.max(0, nNights - (descDesdeNoche - 1));
+  const taxaBase       = nNochesBase * adultos * taxaAlta;
+  const taxaExtra      = nNochesExtra * adultos * (taxaAlta / 2);
+
+  // Construir líneas de factura
+  let items = [];
+
+  // Línea 1: Alojamiento
+  items.push({
+    name:      `Alojamiento Apt. ${r.apt} · ${fmtDate(entrada)} – ${fmtDate(salida)}`,
+    units:     1,
+    price:     precioBase,
+    tax:       iva,
+    productId: null
+  });
+
+  // Línea 2: Taxa primeras noches
+  if (nNochesBase > 0) {
+    items.push({
+      name:      `Taxa Turística · ${nNochesBase} noches × ${adultos} adulto(s)`,
+      units:     nNochesBase * adultos,
+      price:     taxaAlta,
+      tax:       10,
+      productId: HOLDED_PRODUCT_TAXA
+    });
+  }
+
+  // Línea 3: Taxa noches extra (>8)
+  if (nNochesExtra > 0) {
+    items.push({
+      name:      `Taxa + 9 días · ${nNochesExtra} noches × ${adultos} adulto(s)`,
+      units:     nNochesExtra * adultos,
+      price:     taxaAlta / 2,
+      tax:       10,
+      productId: HOLDED_PRODUCT_TAXA9
+    });
+  }
+
+  // Total estimado
+  const totalAloj = precioBase * (1 + iva/100);
+  const totalTaxa = (taxaBase + taxaExtra) * 1.10;
+  const totalFact = totalAloj + totalTaxa;
+
+  // Renderizar modal
+  const body = document.getElementById('holded-modal-body');
+  body.innerHTML = `
+    <div style="margin-bottom:18px">
+      <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--stone);margin-bottom:10px">CONTACTO</div>
+      <div class="form-row fr2">
+        <div class="field">
+          <label>Nombre</label>
+          <input id="holded-nombre" value="${escHtml(nombre)}" placeholder="Nombre del huésped">
+        </div>
+        <div class="field">
+          <label>NIF / Pasaporte</label>
+          <input id="holded-nif" value="${escHtml(nif)}" placeholder="Documento de identidad">
+        </div>
+      </div>
+      <div class="form-row fr2">
+        <div class="field">
+          <label>Email</label>
+          <input id="holded-email" value="${escHtml(email)}" placeholder="email@ejemplo.com">
+        </div>
+        <div class="field">
+          <label>Contacto Holded</label>
+          <div id="holded-contacto-status" style="margin-top:6px;color:var(--stone);font-size:13px">
+            — Sin buscar aún. Pulsa 🔍 Buscar
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="margin-bottom:18px">
+      <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--stone);margin-bottom:10px">LÍNEAS DE FACTURA</div>
+      <table style="width:100%;font-size:13px;border-collapse:collapse">
+        <thead>
+          <tr style="border-bottom:1px solid var(--border);color:var(--stone)">
+            <th style="text-align:left;padding:4px 6px">Concepto</th>
+            <th style="text-align:right;padding:4px 6px;white-space:nowrap">Uds</th>
+            <th style="text-align:right;padding:4px 6px;white-space:nowrap">P/U</th>
+            <th style="text-align:right;padding:4px 6px;white-space:nowrap">IVA</th>
+            <th style="text-align:right;padding:4px 6px;white-space:nowrap">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(it => `
+            <tr style="border-bottom:1px solid var(--border)">
+              <td style="padding:5px 6px">${escHtml(it.name)}</td>
+              <td style="text-align:right;padding:5px 6px">${it.units}</td>
+              <td style="text-align:right;padding:5px 6px">${eur(it.price)}</td>
+              <td style="text-align:right;padding:5px 6px">${it.tax}%</td>
+              <td style="text-align:right;padding:5px 6px;font-weight:600">${eur(it.units * it.price * (1 + it.tax/100))}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+        <tfoot>
+          <tr>
+            <td colspan="4" style="text-align:right;padding:8px 6px;font-weight:700">TOTAL</td>
+            <td style="text-align:right;padding:8px 6px;font-weight:700;font-size:15px">${eur(totalFact)}</td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div>
+      <div class="field">
+        <label>Notas para la factura</label>
+        <textarea id="holded-notas" rows="2" style="resize:vertical">${escHtml(r.notas || '')}</textarea>
+      </div>
+    </div>
+  `;
+
+  // Guardar items para uso posterior
+  body._items = items;
+
+  document.getElementById('modal-holded').classList.add('open');
+}
+
+// Busca el contacto en Holded por nombre o NIF
+async function holdedBuscarContacto() {
+  const nombre = document.getElementById('holded-nombre').value.trim();
+  const nif    = document.getElementById('holded-nif').value.trim();
+  const query  = nif || nombre;
+  if (!query) return toast('⚠ Introduce nombre o NIF para buscar');
+
+  const statusEl = document.getElementById('holded-contacto-status');
+  statusEl.innerHTML = '<span style="color:var(--stone)">⌛ Buscando...</span>';
+  document.getElementById('btn-holded-buscar').disabled = true;
+
+  try {
+    const res = await appsScriptCall({ action: 'holdedSearchContact', query });
+    document.getElementById('btn-holded-buscar').disabled = false;
+
+    if (!res.ok) {
+      statusEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(res.error)}</span>`;
+      return;
+    }
+
+    if (res.contacts && res.contacts.length > 0) {
+      const c = res.contacts[0];
+      _holdedContactoId = c.id;
+      statusEl.innerHTML = `
+        <span style="color:var(--success);font-weight:600">✓ Encontrado:</span>
+        <select id="holded-contacto-sel" onchange="holdedSelContacto(this.value)" style="margin-left:8px;font-size:12px;padding:2px 6px">
+          ${res.contacts.map(ct => `<option value="${ct.id}"${ct.id===c.id?' selected':''}>${escHtml(ct.name)}${ct.code?' · '+ct.code:''}</option>`).join('')}
+          <option value="__nuevo">➕ Crear nuevo contacto</option>
+        </select>
+      `;
+    } else {
+      _holdedContactoId = null;
+      statusEl.innerHTML = `
+        <span style="color:var(--warning)">No encontrado.</span>
+        <button class="btn btn-outline btn-sm" onclick="holdedCrearContacto()" style="margin-left:8px">➕ Crear en Holded</button>
+      `;
+    }
+  } catch(err) {
+    document.getElementById('btn-holded-buscar').disabled = false;
+    statusEl.innerHTML = `<span style="color:var(--danger)">Error: ${err.message}</span>`;
+  }
+}
+
+function holdedSelContacto(val) {
+  if (val === '__nuevo') {
+    _holdedContactoId = null;
+    holdedCrearContacto();
+  } else {
+    _holdedContactoId = val;
+  }
+}
+
+// Crea un contacto nuevo en Holded con los datos del formulario
+async function holdedCrearContacto() {
+  const nombre = document.getElementById('holded-nombre').value.trim();
+  const nif    = document.getElementById('holded-nif').value.trim();
+  const email  = document.getElementById('holded-email').value.trim();
+  if (!nombre) return toast('⚠ Introduce el nombre del huésped');
+
+  const statusEl = document.getElementById('holded-contacto-status');
+  statusEl.innerHTML = '<span style="color:var(--stone)">⌛ Creando contacto...</span>';
+
+  try {
+    const res = await appsScriptCall({
+      action: 'holdedCreateContact',
+      contact: { name: nombre, nif, email }
+    });
+    if (res.ok) {
+      _holdedContactoId = res.contactId;
+      statusEl.innerHTML = `<span style="color:var(--success);font-weight:600">✓ Creado: ${escHtml(res.name)}</span>`;
+    } else {
+      statusEl.innerHTML = `<span style="color:var(--danger)">Error: ${escHtml(res.error)}</span>`;
+    }
+  } catch(err) {
+    statusEl.innerHTML = `<span style="color:var(--danger)">Error: ${err.message}</span>`;
+  }
+}
+
+// Envía la factura borrador a Holded
+async function holdedEnviarFactura() {
+  if (!_holdedContactoId) {
+    return toast('⚠ Primero busca o crea el contacto en Holded');
+  }
+
+  const r = DB.reservas.find(x => x.id === _holdedReservaId);
+  if (!r) return toast('⚠ Reserva no encontrada');
+
+  const body = document.getElementById('holded-modal-body');
+  const items = body._items || [];
+  const notas = document.getElementById('holded-notas').value;
+
+  document.getElementById('btn-holded-enviar').disabled = true;
+  document.getElementById('btn-holded-enviar').textContent = '⌛ Enviando...';
+
+  try {
+    const res = await appsScriptCall({
+      action: 'holdedCreateInvoice',
+      invoice: {
+        contactId: _holdedContactoId,
+        fecha:     r.entrada,
+        serieId:   HOLDED_SERIE_ID || undefined,
+        notas:     notas,
+        items:     items
+      }
+    });
+
+    document.getElementById('btn-holded-enviar').disabled = false;
+    document.getElementById('btn-holded-enviar').textContent = '✓ Crear factura borrador';
+
+    if (res.ok) {
+      // Guardar referencia en la reserva
+      r.holdedInvoiceId  = res.invoiceId;
+      r.holdedDocNumber  = res.docNumber;
+      r.holdedUrl        = res.url;
+      saveDB();
+      syncToSheets(true);
+
+      document.getElementById('modal-holded').classList.remove('open');
+      toast(`✓ Factura ${res.docNumber || ''} creada en Holded`);
+
+      // Botón directo a Holded
+      if (res.url) {
+        if (confirm(`Factura creada correctamente.\n¿Abrir en Holded ahora?`)) {
+          window.open(res.url, '_blank');
+        }
+      }
+    } else {
+      toast(`⚠ Error Holded: ${res.error}`, 5000);
+    }
+  } catch(err) {
+    document.getElementById('btn-holded-enviar').disabled = false;
+    document.getElementById('btn-holded-enviar').textContent = '✓ Crear factura borrador';
+    toast(`⚠ Error: ${err.message}`, 5000);
+  }
+}
+
+function escHtml(s) {
+  if (!s) return '';
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// Helper unificado para llamadas al Apps Script
+async function appsScriptCall(body) {
+  const url = DB.config.sheetsUrl;
+  if (!url) throw new Error('sheetsUrl no configurada');
+  const res = await fetch(url, {
+    method: 'POST',
+    body: JSON.stringify(body)
+  });
+  return res.json();
+}
+
 
 </script>
 
