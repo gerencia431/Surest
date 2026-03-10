@@ -4834,7 +4834,7 @@ function abrirModalHolded() {
   `;
 
   // Guardar items para uso posterior
-  body._items = items;
+  window._holdedItems = items;
 
   document.getElementById('modal-holded').classList.add('open');
 }
@@ -4927,7 +4927,7 @@ async function holdedEnviarFactura() {
   if (!r) return toast('⚠ Reserva no encontrada');
 
   const body = document.getElementById('holded-modal-body');
-  const items = body._items || [];
+  const items = window._holdedItems || [];
   const notas = document.getElementById('holded-notas').value;
 
   document.getElementById('btn-holded-enviar').disabled = true;
