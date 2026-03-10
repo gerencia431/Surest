@@ -4690,7 +4690,7 @@ initApp();
 // ============================================================
 const HOLDED_PRODUCT_TAXA     = '66696e4cccb588d7ac0d3f28'; // TAXA TURISTICA (2€)
 const HOLDED_PRODUCT_TAXA9    = '66c5ec02abbc3d3d260b7022'; // TAXA + 9 DIAS (1€)
-const HOLDED_SERIE_ID         = '';  // ← Pendiente: ID serie SUREST en Holded
+const HOLDED_SERIE_ID = '6669684bf66c15b50301c62c'; // Serie SUREST
 
 let _holdedReservaId  = null;
 let _holdedContactoId = null;
@@ -4939,7 +4939,7 @@ async function holdedEnviarFactura() {
       invoice: {
         contactId: _holdedContactoId,
         fecha:     r.entrada,
-        serieId:   HOLDED_SERIE_ID || undefined,
+        serieId:   HOLDED_SERIE_ID,
         notas:     notas,
         items:     items
       }
