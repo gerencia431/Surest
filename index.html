@@ -1032,11 +1032,11 @@ table.data-table { width: 100%; border-collapse: collapse; }
                 La ITS se aplica por noche/adulto. Desde noche 9: 50% descuento. Menores de 16 años: exentos.
               </div>
               <div class="form-row fr2" style="margin:0">
-                <div class="field"><label>Temporada alta (Jun-Ago) €/noche/adulto</label><input type="number" value="4" id="cfg-its-alta" step="0.5" min="0"></div>
+                <div class="field"><label>Temporada alta (Jun-Ago) €/noche/adulto</label><input type="number" value="2" id="cfg-its-alta" step="0.5" min="0"></div>
                 <div class="field"><label>Temporada media (May/Sep/Oct) €/noche/adulto</label><input type="number" value="2" id="cfg-its-media" step="0.5" min="0"></div>
               </div>
               <div class="form-row fr2" style="margin:6px 0 0">
-                <div class="field"><label>Descuento a partir de noche Nº</label><input type="number" value="8" id="cfg-its-desc-noche" min="1" max="30"></div>
+                <div class="field"><label>Descuento a partir de noche Nº</label><input type="number" value="9" id="cfg-its-desc-noche" min="1" max="30"></div>
                 <div class="field"><label>Porcentaje de descuento (%)</label><input type="number" value="50" id="cfg-its-desc-pct" min="0" max="100"></div>
               </div>
             </div>
@@ -2185,12 +2185,36 @@ function previewFactura(id) {
           <td>${eur(r.precioNoche || 0)}/noche</td>
           <td>${eur(t.base)}</td>
         </tr>
-        ${t.its > 0 ? `<tr>
-          <td>Impost de Turisme Sostenible (ITS) — ${r.adultos} adultos</td>
-          <td>${t.noches} noches</td>
-          <td>variable</td>
-          <td>${eur(t.its)}</td>
-        </tr>` : ''}
+        ${(() => {
+          if (t.its <= 0) return '';
+          const adultos = r.adultos || 1;
+          const descDesdeNoche = DB.config.itsDescNoche || 9;
+          const taxaAlta  = DB.config.itsAlta  || 4;
+          const taxaMedia = DB.config.itsMedia || 2;
+          // Detectar tarifa según mes de entrada
+          const mesEntrada = new Date(r.entrada).getMonth() + 1;
+          const tarifaNoche = (mesEntrada >= 6 && mesEntrada <= 8) ? taxaAlta : taxaMedia;
+          const nNochesBase  = Math.min(t.noches, descDesdeNoche - 1);
+          const nNochesExtra = Math.max(0, t.noches - (descDesdeNoche - 1));
+          let rows = '';
+          if (nNochesBase > 0) {
+            rows += `<tr>
+              <td>Taxa Turística · ${nNochesBase} noches × ${adultos} adulto(s)</td>
+              <td>${nNochesBase * adultos} uds</td>
+              <td>${eur(tarifaNoche)}/ud</td>
+              <td>${eur(nNochesBase * adultos * tarifaNoche)}</td>
+            </tr>`;
+          }
+          if (nNochesExtra > 0) {
+            rows += `<tr>
+              <td>Taxa + 9 días · ${nNochesExtra} noches × ${adultos} adulto(s)</td>
+              <td>${nNochesExtra * adultos} uds</td>
+              <td>${eur(tarifaNoche / 2)}/ud</td>
+              <td>${eur(nNochesExtra * adultos * (tarifaNoche / 2))}</td>
+            </tr>`;
+          }
+          return rows;
+        })()}
       </tbody>
     </table>
     <div class="inv-totals">
