@@ -5006,6 +5006,38 @@ let _holdedReservaId  = null;
 let _holdedContactoId = null;
 
 // Abre el modal preparando el borrador para la reserva actualmente en edición
+// Construye el texto de notas para Holded: notas internas + pagos a cuenta
+function buildHoldedNotas(r) {
+  const lines = [];
+
+  // Notas internas de la reserva
+  if (r.notas && r.notas.trim()) {
+    lines.push(r.notas.trim());
+  }
+
+  // Pagos a cuenta
+  const pagos = (r.pagos || []).filter(p => p.importe > 0);
+  if (pagos.length) {
+    if (lines.length) lines.push('');
+    lines.push('PAGOS RECIBIDOS A CUENTA:');
+    const FORMA_LABELS = { Transferencia:'Transferencia', Efectivo:'Efectivo', Tarjeta:'Tarjeta', Bizum:'Bizum', PayPal:'PayPal', Otro:'Otro' };
+    pagos.forEach(p => {
+      const fechaStr = p.fecha ? fmtDate(p.fecha) : '—';
+      const forma    = FORMA_LABELS[p.forma] || p.forma || '—';
+      const nota     = p.nota ? ' (' + p.nota + ')' : '';
+      lines.push(`  · ${fechaStr} — ${eur(p.importe)} — ${forma}${nota}`);
+    });
+    const totalPagado = pagos.reduce((s, p) => s + p.importe, 0);
+    const t = calcTotalReserva(r);
+    const saldo = t.total - totalPagado;
+    lines.push('');
+    lines.push(`Total pagado: ${eur(totalPagado)}`);
+    lines.push(saldo <= 0 ? 'Saldo: PAGADO' : `Saldo pendiente: ${eur(saldo)}`);
+  }
+
+  return lines.join('\n');
+}
+
 function abrirModalHolded() {
   const id = _editingId;
   if (!id) return toast('⚠ Guarda la reserva primero');
@@ -5137,8 +5169,8 @@ function abrirModalHolded() {
 
     <div>
       <div class="field">
-        <label>Notas para la factura</label>
-        <textarea id="holded-notas" rows="2" style="resize:vertical">${escHtml(r.notas || '')}</textarea>
+        <label>Notas para la factura <span style="font-weight:400;color:var(--stone);font-size:11px">(editable antes de enviar)</span></label>
+        <textarea id="holded-notas" rows="4" style="resize:vertical;font-size:12px;font-family:monospace">${escHtml(buildHoldedNotas(r))}</textarea>
       </div>
     </div>
   `;
