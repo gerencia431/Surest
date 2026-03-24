@@ -1566,10 +1566,26 @@ function checkSheetsOnLoad() {
     .then(r => r.json())
     .then(d => {
       if (d.ok && d.data) {
-        // Sheets es siempre la fuente de verdad — solo preservamos credenciales locales
         const sheetsUrl  = DB.config.sheetsUrl;
         const password   = DB.config.password;
         const appBaseUrl = DB.config.appBaseUrl;
+
+        const localCount  = (DB.reservas || []).length;
+        const sheetsCount = (d.data.reservas || []).length;
+
+        // PROTECCIÓN: nunca machacar datos locales si Sheets tiene menos reservas
+        // Esto evita perder datos cuando Sheets no está sincronizado
+        if (sheetsCount < localCount) {
+          const ts = new Date().toLocaleTimeString('es-ES', {hour:'2-digit', minute:'2-digit'});
+          setSheetsStatus(
+            '⚠ Local (' + localCount + ') > Sheets (' + sheetsCount + ') — sube los datos para sincronizar',
+            'var(--amber)'
+          );
+          // Subir automáticamente el local a Sheets para que queden sincronizados
+          syncToSheets(true);
+          return;
+        }
+
         DB = d.data;
         if (sheetsUrl)  DB.config.sheetsUrl  = sheetsUrl;
         if (password)   DB.config.password   = password;
