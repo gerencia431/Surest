@@ -1,3 +1,11 @@
+<!-- Surest Menorca — v1.4.0 — 2026-03-24
+     Cambios v1.4.0:
+     - Filas "En espera" (U1/U2) en el planning para aparcar reservas sin asignar
+     - Botón "Desasignar" en cada reserva → pasa a fila de espera automáticamente
+     - Sección de Pagos a cuenta en el modal de reserva (fecha, importe, forma de pago, nota)
+     - Pagos aparecen reflejados en el borrador de factura como nota informativa
+       (el total de la factura no se modifica, solo se muestra saldo pendiente)
+-->
 <!DOCTYPE html>
 <html lang="es">
 <head>
@@ -212,6 +220,27 @@ nav { flex: 1; padding: 16px 12px; display: flex; flex-direction: column; gap: 2
 .pg-cell-entrada { background: rgba(255,165,0,0.18) !important; }
 .pg-cell-salida  { background: rgba(255,100,0,0.14) !important; }
 .pg-cell-overlap { background: rgba(220,50,50,0.22) !important; outline: 2px solid rgba(220,50,50,0.6); outline-offset:-2px; }
+
+/* Unassigned / En espera rows */
+.pg-apt-label-unassigned {
+  position: sticky; left: 0; z-index: 5;
+  background: repeating-linear-gradient(45deg, #f5f2ee, #f5f2ee 4px, #ede8e1 4px, #ede8e1 8px);
+  border-right: 1px solid var(--border); border-top: 2px dashed var(--warm2);
+  padding: 0 14px; white-space: nowrap;
+}
+.pg-apt-label-unassigned .apt-name { font-size: 12px; font-weight: 500; color: var(--warm2); }
+.pg-apt-label-unassigned .apt-type { font-size: 10px; color: var(--stone); }
+.pg-cell-unassigned { background: repeating-linear-gradient(45deg, rgba(245,242,238,0.6), rgba(245,242,238,0.6) 4px, rgba(237,232,225,0.6) 4px, rgba(237,232,225,0.6) 8px) !important; border-top: 1px dashed var(--warm2) !important; }
+.bb-unassigned { background: linear-gradient(135deg, #8a8070, #a89880) !important; }
+
+/* Payment section in modal */
+.payment-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr 1fr auto;
+  gap: 8px; align-items: end; margin-bottom: 8px;
+  background: rgba(90,122,90,0.05); border: 1px solid rgba(90,122,90,0.15);
+  border-radius: 7px; padding: 10px 12px;
+}
+@media(max-width:600px) { .payment-row { grid-template-columns: 1fr 1fr; } }
 
 /* RESPONSIVE MOVIL */
 #menu-toggle{display:none;background:none;border:none;color:var(--warm);font-size:24px;cursor:pointer;padding:4px 8px;line-height:1;flex-shrink:0}
@@ -1136,6 +1165,10 @@ table.data-table { width: 100%; border-collapse: collapse; }
             <option value="6">Apartamento 6 · 1 habitación</option>
             <option value="7">Apartamento 7 · 2 habitaciones</option>
             <option value="8">Apartamento 8 · 1 habitación</option>
+            <optgroup label="── En espera (sin asignar) ──">
+              <option value="U1">📦 En espera 1</option>
+              <option value="U2">📦 En espera 2</option>
+            </optgroup>
           </select>
         </div>
         <div class="field field-required"><label>Canal de reserva</label>
@@ -1179,6 +1212,15 @@ table.data-table { width: 100%; border-collapse: collapse; }
 
       <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
 
+      <!-- Pagos a cuenta -->
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px">
+        <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--stone)">💳 Pagos Recibidos <span style="font-size:9px;font-weight:400;color:var(--warm2);margin-left:6px">(aparece en factura como nota — no modifica el total)</span></div>
+        <button class="btn btn-outline btn-sm" onclick="addPaymentRow()" style="border-color:var(--green);color:var(--green)">+ Añadir pago</button>
+      </div>
+      <div id="payment-rows"></div>
+
+      <hr style="border:none;border-top:1px solid var(--border);margin:18px 0">
+
       <!-- Huéspedes -->
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
         <div style="font-size:10px;font-weight:600;letter-spacing:2px;text-transform:uppercase;color:var(--stone)">Datos de Huéspedes (para parte policial)</div>
@@ -1189,6 +1231,7 @@ table.data-table { width: 100%; border-collapse: collapse; }
     </div>
     <div class="modal-footer">
       <button class="btn btn-outline" onclick="closeModalReservaForce()">Cancelar</button>
+      <button class="btn btn-outline" id="btn-desasignar" onclick="desasignarReserva()" style="display:none;border-color:var(--warm2);color:var(--warm2)" title="Mover a fila de espera manteniendo todos los datos">📦 Desasignar apt.</button>
       <button class="btn btn-outline" onclick="openEmailModal()" id="btn-email-reserva" style="display:none">✉ Enviar Email</button>
       <button class="btn btn-outline" id="btn-checkin-form" onclick="abrirLinkCheckin()" style="display:none">📋 Link registro viajeros</button>
       <button class="btn btn-outline" id="btn-holded" onclick="abrirModalHolded()" style="display:none;background:#1a56db;color:#fff;border-color:#1a56db">🏦 Enviar a Holded</button>
@@ -1322,6 +1365,11 @@ const APTS = [
   { num:6, nombre:'Apartamento 6', tipo:'1 habitación',  cap:3 },
   { num:7, nombre:'Apartamento 7', tipo:'2 habitaciones', cap:5 },
   { num:8, nombre:'Apartamento 8', tipo:'1 habitación',  cap:3 },
+];
+// Filas de espera virtuales (no cuentan como apartamentos reales)
+const APTS_UNASSIGNED = [
+  { num:'U1', nombre:'En espera 1', tipo:'Sin asignar' },
+  { num:'U2', nombre:'En espera 2', tipo:'Sin asignar' },
 ];
 
 const MONTHS = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
@@ -1933,15 +1981,100 @@ function renderPlanning() {
     }
     html += '</tr>';
   });
+
+  // ── Filas "En espera" (U1 / U2) ─────────────────────────────
+  APTS_UNASSIGNED.forEach(uApt => {
+    html += '<tr>';
+    html += `<td class="pg-apt-label-unassigned" style="min-width:120px;width:120px">
+      <div class="apt-name">${uApt.nombre}</div>
+      <div class="apt-type">${uApt.tipo}</div>
+    </td>`;
+    const uRes = (DB.reservas || []).filter(r => String(r.apt) === String(uApt.num) && r.estado !== 'cancelada');
+    let i = 0;
+    const firstSeasonDay = seasonDays[0].date;
+    const lastSeasonDay  = seasonDays[seasonDays.length - 1].date;
+    const shownResU = new Set();
+    while (i < seasonDays.length) {
+      const d   = seasonDays[i];
+      const ds  = d.date;
+      const dt2 = new Date(ds + 'T12:00:00');
+      const isWeekend = dt2.getDay() === 0 || dt2.getDay() === 6;
+      const isMStart  = d.day === 1;
+      const borderSt  = isMStart ? 'border-left:2px solid var(--border2);' : '';
+
+      let startRes = uRes.find(r => r.entrada === ds && !shownResU.has(r.id));
+      if (!startRes) startRes = uRes.find(r => r.entrada < firstSeasonDay && r.salida > ds && i === 0 && !shownResU.has(r.id));
+
+      if (startRes) {
+        shownResU.add(startRes.id);
+        const noches = diffDays(startRes.entrada, startRes.salida);
+        let stayDays = 0;
+        for (let j = i; j < seasonDays.length; j++) { if (seasonDays[j].date >= startRes.salida) break; stayDays++; }
+        if (stayDays === 0) stayDays = 1;
+        const guest = startRes.huespedes && startRes.huespedes[0];
+        const name  = guest ? (guest.nombre + ' ' + (guest.apellidos||'')).trim() : (startRes.notas ? startRes.notas.substring(0,20) : '—');
+        const ci = (CANAL_BADGE[startRes.canal]||CANAL_BADGE.directo).icon;
+        const bg = '#8a8070';
+        const labelW = Math.max(stayDays * 34 - 6, 30);
+        const nextConsec = uRes.find(r => r.id !== startRes.id && r.entrada === startRes.salida && r.estado !== 'cancelada');
+
+        // First cell — name label
+        html += `<td class="pg-cell pg-cell-stay pg-cell-unassigned" onclick="editReserva('${startRes.id}')"
+          style="background:linear-gradient(to right, transparent 50%, ${bg} 50%);padding:0;overflow:visible;position:relative;z-index:3;${borderSt}"
+          title="⚠ Sin asignar — ${name} · ${noches}n · Clic para asignar a apartamento">
+          <div style="position:absolute;top:4px;left:2px;height:calc(100% - 8px);
+            width:${labelW}px;border-radius:3px;display:flex;align-items:center;gap:3px;padding:0 6px;
+            color:#fff;white-space:nowrap;overflow:hidden;pointer-events:none;
+            background:${bg};box-shadow:0 1px 3px rgba(0,0,0,0.2);">
+            <span style="font-size:9px;flex-shrink:0;opacity:0.85">${ci}</span>
+            <span style="font-size:10px;font-weight:600;overflow:hidden;text-overflow:ellipsis;flex:1;letter-spacing:0.2px">${name}</span>
+            <span style="font-size:9px;opacity:0.65;flex-shrink:0;margin-left:2px">${noches}n</span>
+          </div>
+        </td>`;
+
+        // Remaining stay cells
+        for (let k = 1; k < stayDays; k++) {
+          const dk = seasonDays[i + k];
+          const bk = dk.day === 1 ? 'border-left:2px solid rgba(255,255,255,0.4);' : '';
+          html += `<td class="pg-cell pg-cell-stay pg-cell-unassigned" onclick="editReserva('${startRes.id}')"
+            style="background:${bg}ee;padding:0;${bk}" title="${name} · ${noches}n"></td>`;
+        }
+
+        // Salida
+        const salidaDay = startRes.salida;
+        if (salidaDay >= firstSeasonDay && salidaDay <= lastSeasonDay) {
+          const sdMStart = new Date(salidaDay + 'T12:00:00').getDate() === 1;
+          const sdBsk = sdMStart ? 'border-left:2px solid var(--border2);' : '';
+          if (nextConsec) {
+            i += stayDays;
+          } else {
+            html += `<td class="pg-cell pg-cell-unassigned" onclick="openNewReservaOnDay('${uApt.num}','${salidaDay}')"
+              style="background:linear-gradient(to right,${bg}cc 50%,transparent 50%);padding:0;${sdBsk}"
+              title="Salida — Clic para nueva reserva en espera"></td>`;
+            i += stayDays + 1;
+          }
+        } else {
+          i += stayDays;
+        }
+      } else {
+        html += `<td class="pg-cell pg-cell-unassigned${isWeekend?' weekend':''}"
+          style="${borderSt}" onclick="openNewReservaOnDay('${uApt.num}','${ds}')"></td>`;
+        i++;
+      }
+    }
+    html += '</tr>';
+  });
+
   html += '</tbody>';
   document.getElementById('planning-table').innerHTML = html;
 
-  // Occupancy strip
+  // Occupancy strip — solo apartamentos reales (no U1/U2)
   const totalN = 8 * seasonDays.length;
   let bookedN = 0;
-  DB.reservas.filter(r => r.estado !== 'cancelada').forEach(r => {
+  DB.reservas.filter(r => r.estado !== 'cancelada' && typeof r.apt === 'number').forEach(r => {
     seasonDays.forEach(d => { if (d.date >= r.entrada && d.date < r.salida) bookedN++; });
   });
+  const numEnEspera = DB.reservas.filter(r => (r.apt === 'U1' || r.apt === 'U2') && r.estado !== 'cancelada').length;
   const occPct = Math.round(bookedN / totalN * 100);
   // Canal legend
   const legendEl = document.getElementById('planning-canal-legend');
@@ -1964,6 +2097,7 @@ function renderPlanning() {
       <span style="font-size:17px;font-weight:600;font-family:var(--font-serif);color:${occPct>=70?'var(--green)':occPct>=40?'var(--amber)':'var(--red)'}">${occPct}%</span>
       <div class="occ-bar" style="width:80px"><div class="occ-fill" style="width:${occPct}%"></div></div>
       <span style="color:var(--stone)">${bookedN} / ${totalN} noches</span>
+      ${numEnEspera > 0 ? `<span style="color:var(--warm2);border-left:1px solid var(--border);padding-left:8px">📦 ${numEnEspera} en espera</span>` : ''}
     </div>`;
 
   if (document.getElementById('planning-month-label'))
@@ -1996,7 +2130,7 @@ function openNewReservaOnDay(aptNum, date) {
 // ==========================================================
 function updateSidebar() {
   const today = isoDate(new Date());
-  const active = DB.reservas.filter(r => r.entrada <= today && r.salida > today && r.estado !== 'cancelada');
+  const active = DB.reservas.filter(r => r.entrada <= today && r.salida > today && r.estado !== 'cancelada' && typeof r.apt === 'number');
   const checkins = DB.reservas.filter(r => r.entrada === today && r.estado !== 'cancelada');
   document.getElementById('sb-ocupacion').textContent = active.length + '/8';
   document.getElementById('sb-checkins').textContent = checkins.length;
@@ -2049,9 +2183,13 @@ function renderReservasTable() {
     const noches = totals.noches;
     const badge = STATUS_BADGE[r.estado] || 'badge-stone';
     const label = STATUS_LABELS[r.estado] || r.estado;
-    return `<tr>
+    const isUnassigned = r.apt === 'U1' || r.apt === 'U2';
+    const aptLabel = isUnassigned
+      ? `<span style="color:var(--warm2);font-style:italic">📦 En espera</span>`
+      : `<strong>Apt. ${r.apt}</strong>`;
+    return `<tr${isUnassigned ? ' style="background:rgba(168,152,128,0.07)"' : ''}>
       <td style="color:var(--stone);font-size:11px">#${r.id.slice(-4).toUpperCase()}</td>
-      <td><strong>Apt. ${r.apt}</strong></td>
+      <td>${aptLabel}</td>
       <td>${name}</td>
       <td>${fmtDate(r.entrada)}</td>
       <td>${fmtDate(r.salida)}</td>
@@ -2180,7 +2318,7 @@ function previewFactura(id) {
       </tr></thead>
       <tbody>
         <tr>
-          <td>Alojamiento ${r.apt ? 'Apartamento ' + r.apt : ''} — ${fmtDate(r.entrada)} al ${fmtDate(r.salida)}</td>
+          <td>Alojamiento ${r.apt ? (r.apt === 'U1' || r.apt === 'U2' ? '(Sin asignar)' : 'Apartamento ' + r.apt) : ''} — ${fmtDate(r.entrada)} al ${fmtDate(r.salida)}</td>
           <td>${t.noches} noches</td>
           <td>${eur(r.precioNoche || 0)}/noche</td>
           <td>${eur(t.base)}</td>
@@ -2224,6 +2362,46 @@ function previewFactura(id) {
       <div class="inv-total-row final"><span>TOTAL</span><span>${eur(t.total)}</span></div>
       ${(r.fianza||0)>0 ? `<div class="inv-total-row" style="color:var(--amber)"><span>Fianza (a devolver)</span><span>${eur(r.fianza)}</span></div>` : ''}
     </div>
+    ${(() => {
+      const pagos = (r.pagos || []).filter(p => p.importe > 0);
+      if (!pagos.length) return '';
+      const totalPagado = pagos.reduce((s, p) => s + p.importe, 0);
+      const saldo = t.total - totalPagado;
+      const FORMA_ICONS = { Transferencia:'🏦', Efectivo:'💶', Tarjeta:'💳', Bizum:'📱', PayPal:'🅿', Otro:'📝' };
+      return `
+      <div style="margin-top:20px;border:1px solid #e8e4de;border-radius:8px;overflow:hidden">
+        <div style="background:#f9f7f4;padding:8px 14px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:2px;color:#888">
+          💳 Pagos recibidos a cuenta
+        </div>
+        <table style="width:100%;border-collapse:collapse">
+          <thead><tr style="background:#f5f2ee">
+            <th style="padding:6px 12px;text-align:left;font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px">Fecha</th>
+            <th style="padding:6px 12px;text-align:left;font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px">Forma</th>
+            <th style="padding:6px 12px;text-align:left;font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px">Nota</th>
+            <th style="padding:6px 12px;text-align:right;font-size:10px;color:#888;font-weight:600;text-transform:uppercase;letter-spacing:1px">Importe</th>
+          </tr></thead>
+          <tbody>
+            ${pagos.map(p => `<tr style="border-top:1px solid #f0ede8">
+              <td style="padding:7px 12px;font-size:12px;color:#555">${fmtDate(p.fecha)}</td>
+              <td style="padding:7px 12px;font-size:12px;color:#555">${FORMA_ICONS[p.forma]||'📝'} ${p.forma}</td>
+              <td style="padding:7px 12px;font-size:12px;color:#777;font-style:italic">${p.nota || '—'}</td>
+              <td style="padding:7px 12px;font-size:12px;color:#555;text-align:right;font-weight:500">${eur(p.importe)}</td>
+            </tr>`).join('')}
+          </tbody>
+        </table>
+        <div style="padding:8px 14px;background:#f9f7f4;border-top:1px solid #e8e4de;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:#666">Total pagado a cuenta</span>
+          <span style="font-size:13px;font-weight:600;color:#5a7a5a">${eur(totalPagado)}</span>
+        </div>
+        <div style="padding:8px 14px;background:#fff8f0;border-top:1px solid #e8e4de;display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:12px;color:#8b6020;font-weight:600">Saldo pendiente</span>
+          <span style="font-size:14px;font-weight:700;color:${saldo <= 0 ? '#5a7a5a' : '#8b6020'}">${saldo <= 0 ? '✓ PAGADO' : eur(saldo)}</span>
+        </div>
+        <div style="padding:6px 14px 8px;font-size:10px;color:#aaa;font-style:italic">
+          Nota: El importe total de la factura es ${eur(t.total)}. Los pagos a cuenta se reflejan informativamente y no modifican el importe facturado.
+        </div>
+      </div>`;
+    })()}
     <div class="inv-footer">
       <div class="inv-brand">Surest · Menorca</div>
       Gracias por su estancia. Este documento es un borrador informativo.<br>
@@ -2258,8 +2436,7 @@ function printInvoice() {
   .inv-total-row{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;color:#666}
   .inv-total-row.final{font-weight:700;font-size:16px;color:#2d2926;border-top:2px solid #2d2926;margin-top:6px;padding-top:10px}
   .inv-footer{margin-top:30px;font-size:11px;color:#888;text-align:center;line-height:1.8}
-  .inv-brand{font-family:'Cormorant Garamond',serif;font-size:15px;color:#a89880;margin-bottom:4px}
-  </style></head><body>${content}</body></html>`);
+  .inv-brand{font-family:'Cormorant Garamond',serif;font-size:15px;color:#a89880;margin-bottom:4px}  </style></head><body>${content}</body></html>`);
   win.document.close();
   setTimeout(() => { win.print(); }, 500);
 }
@@ -2651,6 +2828,8 @@ function openNewReserva() {
   document.getElementById('price-summary-box').style.display = 'none';
   document.getElementById('btn-email-reserva').style.display = 'none';
   document.getElementById('btn-holded').style.display = 'none';
+  document.getElementById('btn-desasignar').style.display = 'none';
+  document.getElementById('payment-rows').innerHTML = '';
   document.getElementById('guest-forms').innerHTML = '';
   // Start with 2 guest forms
   addGuestForm(); addGuestForm();
@@ -2661,8 +2840,12 @@ function editReserva(id) {
   const r = DB.reservas.find(x => x.id === id);
   if (!r) return;
   _editingId = id;
-  document.getElementById('modal-reserva-title').textContent = 'Editar Reserva — Apt. ' + r.apt;
-  document.getElementById('res-apt').value = r.apt || '';
+  const aptStr = String(r.apt);
+  const isUnassigned = aptStr === 'U1' || aptStr === 'U2';
+  document.getElementById('modal-reserva-title').textContent = isUnassigned
+    ? 'Reserva en espera — ' + (aptStr === 'U1' ? 'En espera 1' : 'En espera 2')
+    : 'Editar Reserva — Apt. ' + r.apt;
+  document.getElementById('res-apt').value = aptStr;
   document.getElementById('res-canal').value = r.canal || 'directo';
   document.getElementById('res-entrada').value = r.entrada || '';
   document.getElementById('res-salida').value = r.salida || '';
@@ -2674,6 +2857,10 @@ function editReserva(id) {
   document.getElementById('res-iva').value = r.iva || 10;
   document.getElementById('res-fianza').value = r.fianza || 0;
 
+  // Load payments
+  document.getElementById('payment-rows').innerHTML = '';
+  (r.pagos || []).forEach(p => addPaymentRow(p));
+
   document.getElementById('guest-forms').innerHTML = '';
   (r.huespedes || []).forEach(h => addGuestForm(h));
   if (!r.huespedes || !r.huespedes.length) { addGuestForm(); addGuestForm(); }
@@ -2681,6 +2868,8 @@ function editReserva(id) {
   document.getElementById('modal-reserva').classList.add('open');
   document.getElementById('btn-email-reserva').style.display = 'inline-flex';
   document.getElementById('btn-holded').style.display = 'inline-flex';
+  // Mostrar "Desasignar" solo si el apt es real (no ya en espera)
+  document.getElementById('btn-desasignar').style.display = isUnassigned ? 'none' : 'inline-flex';
 }
 
 function closeModalReserva(e) { if (e.target === document.getElementById('modal-reserva')) closeModalReservaForce(); }
@@ -2848,19 +3037,27 @@ function saveReserva() {
   if (!apt || !entrada || !salida) { toast('⚠ Completa apartamento, entrada y salida'); return; }
   if (salida <= entrada) { toast('⚠ La salida debe ser posterior a la entrada'); return; }
 
-  // Check for conflicts
-  const conflict = DB.reservas.find(r =>
-    r.id !== _editingId && r.apt.toString() === apt &&
-    r.estado !== 'cancelada' &&
-    r.entrada < salida && r.salida > entrada
-  );
-  if (conflict) {
-    toast('⚠ El apartamento ya tiene una reserva en esas fechas'); return;
+  const isUnassigned = apt === 'U1' || apt === 'U2';
+
+  // Check for conflicts — solo en apartamentos reales
+  if (!isUnassigned) {
+    const conflict = DB.reservas.find(r =>
+      r.id !== _editingId && r.apt.toString() === apt &&
+      r.estado !== 'cancelada' &&
+      r.entrada < salida && r.salida > entrada
+    );
+    if (conflict) {
+      toast('⚠ El apartamento ya tiene una reserva en esas fechas'); return;
+    }
   }
 
+  // apt: si es U1/U2 guardamos como string, si no como int
+  const aptValue = isUnassigned ? apt : parseInt(apt);
+
+  const existing = _editingId ? DB.reservas.find(r => r.id === _editingId) : null;
   const reserva = {
     id: _editingId || uid(),
-    apt: parseInt(apt),
+    apt: aptValue,
     canal: document.getElementById('res-canal').value,
     entrada, salida,
     adultos: parseInt(document.getElementById('res-adultos').value) || 2,
@@ -2870,8 +3067,14 @@ function saveReserva() {
     precioNoche: parseFloat(document.getElementById('res-precio-noche').value) || 0,
     iva: parseFloat(document.getElementById('res-iva').value) || 10,
     fianza: parseFloat(document.getElementById('res-fianza').value) || 0,
+    pagos: collectPayments(),
     huespedes: collectGuests(),
-    creadaEn: _editingId ? (DB.reservas.find(r=>r.id===_editingId)?.creadaEn || new Date().toISOString()) : new Date().toISOString(),
+    creadaEn: existing ? (existing.creadaEn || new Date().toISOString()) : new Date().toISOString(),
+    // Preservar metadatos de Holded si existían
+    holdedInvoiceId: existing?.holdedInvoiceId,
+    holdedDocNumber: existing?.holdedDocNumber,
+    holdedUrl: existing?.holdedUrl,
+    facturaGenerada: existing?.facturaGenerada,
   };
 
   if (_editingId) {
@@ -2880,12 +3083,95 @@ function saveReserva() {
     toast('✓ Reserva actualizada');
   } else {
     DB.reservas.push(reserva);
-    toast('✓ Reserva creada — Apt. ' + apt);
+    toast(isUnassigned ? '✓ Reserva creada — En espera' : '✓ Reserva creada — Apt. ' + apt);
   }
   saveDB();
   syncToSheets(true);
   closeModalReservaForce();
   renderPlanning();
+}
+
+// ==========================================================
+// DESASIGNAR RESERVA (mover a fila de espera)
+// ==========================================================
+function desasignarReserva() {
+  if (!_editingId) return;
+  const r = DB.reservas.find(x => x.id === _editingId);
+  if (!r) return;
+
+  // Elegir U1 o U2: la que tenga menos reservas sin solapamiento de fechas
+  const resU1 = DB.reservas.filter(x => x.apt === 'U1' && x.id !== r.id && x.estado !== 'cancelada' && x.entrada < r.salida && x.salida > r.entrada);
+  const resU2 = DB.reservas.filter(x => x.apt === 'U2' && x.id !== r.id && x.estado !== 'cancelada' && x.entrada < r.salida && x.salida > r.entrada);
+  const slot = resU1.length === 0 ? 'U1' : resU2.length === 0 ? 'U2' : null;
+
+  if (!slot) {
+    toast('⚠ Ambas filas de espera están ocupadas en esas fechas. Libera espacio primero.', 4000);
+    return;
+  }
+
+  const aptOld = r.apt;
+  r.apt = slot;
+  saveDB();
+  syncToSheets(true);
+  closeModalReservaForce();
+  renderPlanning();
+  toast(`📦 Reserva movida a "${slot === 'U1' ? 'En espera 1' : 'En espera 2'}" — Apt. ${aptOld} liberado`);
+}
+
+// ==========================================================
+// PAGOS A CUENTA
+// ==========================================================
+let _paymentCount = 0;
+function addPaymentRow(data = {}) {
+  _paymentCount++;
+  const pid = 'pay-' + _paymentCount;
+  const today = isoDate(new Date());
+  const wrap = document.getElementById('payment-rows');
+  const div = document.createElement('div');
+  div.className = 'payment-row';
+  div.id = 'payment-row-' + pid;
+  div.innerHTML = `
+    <div class="field" style="margin:0">
+      <label>Fecha pago</label>
+      <input type="date" id="${pid}-fecha" value="${data.fecha || today}">
+    </div>
+    <div class="field" style="margin:0">
+      <label>Importe (€)</label>
+      <input type="number" id="${pid}-importe" value="${data.importe || ''}" step="0.01" min="0" placeholder="0.00">
+    </div>
+    <div class="field" style="margin:0">
+      <label>Forma de pago</label>
+      <select id="${pid}-forma">
+        <option value="Transferencia" ${(data.forma||'Transferencia')==='Transferencia'?'selected':''}>Transferencia</option>
+        <option value="Efectivo" ${data.forma==='Efectivo'?'selected':''}>Efectivo</option>
+        <option value="Tarjeta" ${data.forma==='Tarjeta'?'selected':''}>Tarjeta</option>
+        <option value="Bizum" ${data.forma==='Bizum'?'selected':''}>Bizum</option>
+        <option value="PayPal" ${data.forma==='PayPal'?'selected':''}>PayPal</option>
+        <option value="Otro" ${data.forma==='Otro'?'selected':''}>Otro</option>
+      </select>
+    </div>
+    <div class="field" style="margin:0">
+      <label>Nota (opcional)</label>
+      <input type="text" id="${pid}-nota" value="${data.nota || ''}" placeholder="Ej: señal, resto...">
+    </div>
+    <button onclick="document.getElementById('payment-row-${pid}').remove()"
+      style="background:none;border:none;color:var(--red2);font-size:18px;cursor:pointer;padding:0 4px;align-self:flex-end;margin-bottom:2px" title="Eliminar pago">×</button>
+  `;
+  wrap.appendChild(div);
+}
+
+function collectPayments() {
+  return Array.from(document.querySelectorAll('[id^="payment-row-"]')).map(row => {
+    const pid = row.id.replace('payment-row-', '');
+    const importe = parseFloat(document.getElementById(pid + '-importe')?.value) || 0;
+    if (!importe) return null;
+    return {
+      fecha:   document.getElementById(pid + '-fecha')?.value  || '',
+      importe: importe,
+      forma:   document.getElementById(pid + '-forma')?.value  || '',
+      nota:    document.getElementById(pid + '-nota')?.value   || '',
+    };
+  }).filter(Boolean);
 }
 
 // ==========================================================
